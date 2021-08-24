@@ -1,7 +1,7 @@
 package util
 
 import (
-	"kava-challange/constants"
+	"kava-challange/pkg/constants"
 	"os"
 )
 

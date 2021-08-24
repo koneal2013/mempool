@@ -3,7 +3,7 @@ package logging
 import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"kava-challange/util"
+	"kava-challange/pkg/util"
 )
 
 var logger LoggingSystem = nil
@@ -35,4 +35,3 @@ func Logger() LoggingSystem {
 	}
 	return logger.Named("system")
 }
-

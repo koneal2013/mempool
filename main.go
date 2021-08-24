@@ -1,5 +1,11 @@
 package main
 
+import (
+	"kava-challange/pkg/logging"
+)
+
 func main() {
-	$END$
+	logger := logging.Logger()
+	defer logger.Sync()
+	logger.Sugar().Named("main").Info("Done...")
 }

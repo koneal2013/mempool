@@ -1,0 +1,5 @@
+# mocks should be generated before tests and not stored in source control
+mocks/
+
+# ignore code coverage files
+.coverage
