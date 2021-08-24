@@ -1,0 +1,7 @@
+package constants
+
+const (
+	ENV_DEBUG_ENVIRONMENT = "DEBUG"
+
+	ENV_KAVA_DATA_ENDPOINT = "DATA_ENDPOINT"
+)
