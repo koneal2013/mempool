@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/joho/godotenv"
 	"kava-challange/pkg/constants"
 	"kava-challange/pkg/logging"
@@ -52,7 +51,6 @@ func main() {
 					}
 				}
 			}
-			fmt.Println(len(mempool.Transactions))
 		}
 	}
 	logger.Sugar().Named("main").Info("Done...")

@@ -36,7 +36,7 @@ func (mp *mempool) AddTx(tx *Tx) (err error) {
 		err = fmt.Errorf("transaction with hash [%s] already exists", tx.TxHash)
 		return err
 	}
-	logger.Sugar().Named("mempool/AddTx").Infof("calculating total fee for transaction with hash [%s]", tx.TxHash)
+	logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
 	tx.calculateTotalFees()
 	//when mempool is full, prioritize transactions with higher fee
 	if len(mp.Transactions) >= maxMempoolSize {
@@ -51,7 +51,7 @@ func (mp *mempool) AddTx(tx *Tx) (err error) {
 
 func (mp *mempool) dropTx(tx *Tx) (err error) {
 	if exists := mp.contains(tx.TxHash); exists {
-		logger.Sugar().Named("mempool/dropTx").Infof("dropping low priority transaction with hash [%s] and total fee of [%v]", tx.TxHash, tx.TotalFee)
+		logger.Sugar().Named("mempool/dropTx").Debugf("dropping low priority transaction with hash [%s] and total fee of [%v]", tx.TxHash, tx.TotalFee)
 		mp.Transactions = mp.Transactions[:maxMempoolSize-1]
 		return nil
 	}
