@@ -2,4 +2,4 @@
 mocks/
 
 # ignore code coverage files
-.coverage
+.coverage/
