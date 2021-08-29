@@ -13,6 +13,10 @@ var (
 	logger         logging.LoggingSystem
 )
 
+const (
+	ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
+)
+
 type mempool struct {
 	Transactions []*Tx
 }
@@ -25,6 +29,9 @@ type MempoolI interface {
 }
 
 func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
+	if maxPoolSize <= 0 {
+		ls.Fatal(ERR_MEMPOOL_SIZE)
+	}
 	maxMempoolSize = maxPoolSize
 	logger = ls
 	return &mempool{
