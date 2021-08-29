@@ -1,5 +1,9 @@
 package types
 
+import (
+	"kava-challange/pkg/logging"
+)
+
 type Tx struct {
 	TxHash    string
 	Gas       float64
@@ -12,7 +16,14 @@ type TxI interface {
 	calculateTotalFees()
 }
 
-func NewTx(txHash, signature string, gas, feePerGas float64) *Tx {
+const (
+	WARN_BAD_DATA = "encountered one or more missing parameters while creating transaction"
+)
+
+func NewTx(logger logging.LoggingSystem, txHash, signature string, gas, feePerGas float64) *Tx {
+	if txHash == " " || signature == " " || gas == 0.0 || feePerGas == 0.0 {
+		logger.Warn(WARN_BAD_DATA)
+	}
 	return &Tx{
 		TxHash:    txHash,
 		Gas:       gas,
