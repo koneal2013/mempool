@@ -55,9 +55,9 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">kava-challange/pkg/types/mempool.go (0.0%)</option>
+				<option value="file0">kava-challange/pkg/types/mempool.go (64.9%)</option>
 				
-				<option value="file1">kava-challange/pkg/types/tx.go (75.0%)</option>
+				<option value="file1">kava-challange/pkg/types/tx.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -86,6 +86,10 @@ var (
         logger         logging.LoggingSystem
 )
 
+const (
+        ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
+)
+
 type mempool struct {
         Transactions []*Tx
 }
@@ -97,20 +101,23 @@ type MempoolI interface {
         contains(hash string) bool
 }
 
-func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool <span class="cov0" title="0">{
-        maxMempoolSize = maxPoolSize
+func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool <span class="cov8" title="1">{
+        if maxPoolSize &lt;= 0 </span><span class="cov8" title="1">{
+                ls.Fatal(ERR_MEMPOOL_SIZE)
+        }</span>
+        <span class="cov8" title="1">maxMempoolSize = maxPoolSize
         logger = ls
         return &amp;mempool{
                 Transactions: make([]*Tx, 0),
-        }
-}</span>
+        }</span>
+}
 
-func (mp *mempool) AddTx(tx *Tx) (err error) <span class="cov0" title="0">{
-        if exists := mp.contains(tx.TxHash); exists </span><span class="cov0" title="0">{
+func (mp *mempool) AddTx(tx *Tx) (err error) <span class="cov8" title="1">{
+        if exists := mp.contains(tx.TxHash); exists </span><span class="cov8" title="1">{
                 err = fmt.Errorf("transaction with hash [%s] already exists", tx.TxHash)
                 return err
         }</span>
-        <span class="cov0" title="0">logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
+        <span class="cov8" title="1">logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
         tx.calculateTotalFees()
         //when mempool is full, prioritize transactions with higher fee
         if len(mp.Transactions) &gt;= maxMempoolSize </span><span class="cov0" title="0">{
@@ -118,7 +125,7 @@ func (mp *mempool) AddTx(tx *Tx) (err error) <span class="cov0" title="0">{
                         return errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", tx.TxHash)
                 }</span>
         }
-        <span class="cov0" title="0">mp.Transactions = append(mp.Transactions, tx)
+        <span class="cov8" title="1">mp.Transactions = append(mp.Transactions, tx)
         mp.sort()
         return nil</span>
 }
@@ -133,35 +140,35 @@ func (mp *mempool) dropTx(tx *Tx) (err error) <span class="cov0" title="0">{
         return err</span>
 }
 
-func (mp *mempool) sort() <span class="cov0" title="0">{
+func (mp *mempool) sort() <span class="cov8" title="1">{
         sort.Slice(mp.Transactions, func(i, j int) bool </span><span class="cov0" title="0">{
                 return mp.Transactions[i].TotalFee &gt; mp.Transactions[j].TotalFee
         }</span>)
 }
 
-func (mp *mempool) contains(hash string) bool <span class="cov0" title="0">{
-        for _, tx := range mp.Transactions </span><span class="cov0" title="0">{
-                if len(mp.Transactions) &gt; 0 &amp;&amp; tx.TxHash == hash </span><span class="cov0" title="0">{
+func (mp *mempool) contains(hash string) bool <span class="cov8" title="1">{
+        for _, tx := range mp.Transactions </span><span class="cov8" title="1">{
+                if len(mp.Transactions) &gt; 0 &amp;&amp; tx.TxHash == hash </span><span class="cov8" title="1">{
                         return true
                 }</span>
         }
-        <span class="cov0" title="0">return false</span>
+        <span class="cov8" title="1">return false</span>
 }
 
-func (mp *mempool) ExportToFile() (err error) <span class="cov0" title="0">{
+func (mp *mempool) ExportToFile() (err error) <span class="cov8" title="1">{
         if prioritizedMempoolFile, err := os.Create("prioritized-transactions.txt"); err != nil </span><span class="cov0" title="0">{
                 logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
                 return err
-        }</span> else<span class="cov0" title="0"> {
+        }</span> else<span class="cov8" title="1"> {
                 defer prioritizedMempoolFile.Close()
-                for _, tx := range mp.Transactions </span><span class="cov0" title="0">{
+                for _, tx := range mp.Transactions </span><span class="cov8" title="1">{
                         if _, err = prioritizedMempoolFile.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)); err != nil </span><span class="cov0" title="0">{
                                 logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
                                 continue</span>
                         }
                 }
         }
-        <span class="cov0" title="0">return nil</span>
+        <span class="cov8" title="1">return nil</span>
 }
 </pre>
 		
@@ -199,7 +206,7 @@ func NewTx(logger logging.LoggingSystem, txHash, signature string, gas, feePerGa
         }</span>
 }
 
-func (tx *Tx) calculateTotalFees() <span class="cov0" title="0">{
+func (tx *Tx) calculateTotalFees() <span class="cov8" title="1">{
         tx.TotalFee = tx.FeePerGas * tx.Gas
 }</span>
 </pre>
