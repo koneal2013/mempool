@@ -3,3 +3,5 @@ mocks/
 
 # ignore code coverage files
 .coverage/
+
+prioritized-transactions.txt

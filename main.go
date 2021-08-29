@@ -51,6 +51,7 @@ func main() {
 					}
 				}
 			}
+			mempool.ExportToFile()
 		}
 	}
 	logger.Sugar().Named("main").Info("Done...")

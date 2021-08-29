@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"kava-challange/pkg/logging"
+	"os"
 	"sort"
 )
 
@@ -72,4 +73,20 @@ func (mp *mempool) contains(hash string) bool {
 		}
 	}
 	return false
+}
+
+func (mp *mempool) ExportToFile() (err error) {
+	if prioritizedMempoolFile, err := os.Create("prioritized-transactions.txt"); err != nil {
+		logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
+		return err
+	} else {
+		defer prioritizedMempoolFile.Close()
+		for _, tx := range mp.Transactions {
+			if _, err = prioritizedMempoolFile.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)); err != nil {
+				logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
+				continue
+			}
+		}
+	}
+	return nil
 }
