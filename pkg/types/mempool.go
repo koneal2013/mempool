@@ -68,7 +68,7 @@ func (mp *mempool) sort() {
 
 func (mp *mempool) contains(hash string) bool {
 	for _, tx := range mp.Transactions {
-		if mp.Transactions[0] != nil && tx.TxHash == hash {
+		if len(mp.Transactions) > 0 && tx.TxHash == hash {
 			return true
 		}
 	}
