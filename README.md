@@ -45,6 +45,7 @@ run the following command:
 ```bash
     export GOPATH="$HOME/go"
     PATH="$GOPATH/bin:$PATH"
+    go install github.com/golang/mock/mockgen
 ```
 
 
