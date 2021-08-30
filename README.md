@@ -43,7 +43,8 @@ If you encounter the following error:
 ```mockgen: command not found```
 run the following command:
 ```bash
-    go get github.com/golang/mock/mockgen
+    export GOPATH="$HOME/go"
+    PATH="$GOPATH/bin:$PATH"
 ```
 
 
