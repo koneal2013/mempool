@@ -1,5 +1,6 @@
 ## Instructions 
-Start by cloning this repository. In a terminal window, change the working directory to ```<PATH WHERE YOU CLONED THE REPO>/kava-challange```.
+Start by cloning this repository. 
+In a terminal window, change the working directory to ```<PATH WHERE YOU CLONED THE REPO>/kava-challange```.
 
 Running ```make start``` will:
 1. Clean the build directory
