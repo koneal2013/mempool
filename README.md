@@ -1,5 +1,5 @@
 ## Instructions 
-Start by cloning this repository and navigating to the project directory in a terminal window.
+Start by cloning this repository to the ```~/go/src``` directory. In a terminal window, change the working directory to ```/~/go/src/kava-challange```.
 
 Running ```make start``` will:
 1. Clean the build directory
