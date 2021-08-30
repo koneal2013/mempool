@@ -56,6 +56,7 @@ func TestMempool_AddTx(t *testing.T) {
 		signature   string
 		isError     bool
 		maxPoolSize int
+		isDrop      bool
 	}{
 		{
 			name:        "success",
@@ -65,6 +66,7 @@ func TestMempool_AddTx(t *testing.T) {
 			signature:   "testSig",
 			isError:     false,
 			maxPoolSize: 1,
+			isDrop:      false,
 		},
 		{
 			name:        "failure_duplicate_tx",
@@ -74,6 +76,17 @@ func TestMempool_AddTx(t *testing.T) {
 			signature:   "testSig",
 			isError:     true,
 			maxPoolSize: 2,
+			isDrop:      false,
+		},
+		{
+			name:        "drop_low_priority",
+			txHash:      "txHash_drop",
+			gas:         54.5,
+			feePerGas:   0.4934,
+			signature:   "testSig",
+			isError:     true,
+			maxPoolSize: 2,
+			isDrop:      true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,9 +95,16 @@ func TestMempool_AddTx(t *testing.T) {
 			logger := logging.Logger()
 			memPool := types.NewMempool(tc.maxPoolSize, logger)
 			tx := types.NewTx(logger, tc.txHash, tc.signature, tc.gas, tc.feePerGas)
+			txHighPriority := types.NewTx(logger, "txHash_highPriority", tc.signature, tc.gas, 2.939484)
 
 			original := memPool.AddTx(tx)
 			duplicate := memPool.AddTx(tx)
+			drop := memPool.AddTx(txHighPriority)
+
+			if tc.isDrop {
+				assert.Equal(t, memPool.Transactions[0].TotalFee, txHighPriority.TotalFee)
+				assert.Nil(t, drop)
+			}
 
 			if tc.isError {
 				assert.Error(t, duplicate)

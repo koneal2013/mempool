@@ -1,4 +1,8 @@
 mode: set
+kava-challange/pkg/types/tx.go:23.96,24.73 1 1
+kava-challange/pkg/types/tx.go:27.2,32.3 1 1
+kava-challange/pkg/types/tx.go:24.73,26.3 1 1
+kava-challange/pkg/types/tx.go:35.36,37.2 1 1
 kava-challange/pkg/types/mempool.go:31.69,32.22 1 1
 kava-challange/pkg/types/mempool.go:35.2,39.3 3 1
 kava-challange/pkg/types/mempool.go:32.22,34.3 1 1
@@ -6,13 +10,13 @@ kava-challange/pkg/types/mempool.go:42.46,43.46 1 1
 kava-challange/pkg/types/mempool.go:47.2,50.44 3 1
 kava-challange/pkg/types/mempool.go:55.2,57.12 3 1
 kava-challange/pkg/types/mempool.go:43.46,46.3 2 1
-kava-challange/pkg/types/mempool.go:50.44,51.69 1 0
+kava-challange/pkg/types/mempool.go:50.44,51.69 1 1
 kava-challange/pkg/types/mempool.go:51.69,53.4 1 0
-kava-challange/pkg/types/mempool.go:60.47,61.46 1 0
+kava-challange/pkg/types/mempool.go:60.47,61.46 1 1
 kava-challange/pkg/types/mempool.go:66.2,67.12 2 0
-kava-challange/pkg/types/mempool.go:61.46,65.3 3 0
+kava-challange/pkg/types/mempool.go:61.46,65.3 3 1
 kava-challange/pkg/types/mempool.go:70.27,71.50 1 1
-kava-challange/pkg/types/mempool.go:71.50,73.3 1 0
+kava-challange/pkg/types/mempool.go:71.50,73.3 1 1
 kava-challange/pkg/types/mempool.go:76.47,77.37 1 1
 kava-challange/pkg/types/mempool.go:82.2,82.14 1 1
 kava-challange/pkg/types/mempool.go:77.37,78.52 1 1
@@ -23,7 +27,3 @@ kava-challange/pkg/types/mempool.go:86.90,89.3 2 0
 kava-challange/pkg/types/mempool.go:89.8,91.38 2 1
 kava-challange/pkg/types/mempool.go:91.38,92.172 1 1
 kava-challange/pkg/types/mempool.go:92.172,94.13 2 0
-kava-challange/pkg/types/tx.go:23.96,24.73 1 1
-kava-challange/pkg/types/tx.go:27.2,32.3 1 1
-kava-challange/pkg/types/tx.go:24.73,26.3 1 1
-kava-challange/pkg/types/tx.go:35.36,37.2 1 1
