@@ -40,9 +40,7 @@ make covero
 ```
 ### Troubleshooting 
 If you encounter the following error:
-```
-mockgen: command not found
-```
+```mockgen: command not found```
 run the following command:
 ```bash
     go get github.com/golang/mock/mockgen
