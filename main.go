@@ -47,7 +47,7 @@ func main() {
 				} else {
 					signature := strings.TrimPrefix(rawTransaction[3], "Signature=")
 					if err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas)); err != nil {
-						logger.Sugar().Errorf("error inserting transactions with hash [%s]: [%v]", txHash, err.Error())
+						logger.Sugar().Errorf("error inserting transaction with hash [%s]: [%v]", txHash, err.Error())
 						continue
 					}
 				}
