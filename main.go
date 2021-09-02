@@ -47,12 +47,15 @@ func main() {
 				} else {
 					signature := strings.TrimPrefix(rawTransaction[3], "Signature=")
 					if err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas)); err != nil {
-						logger.Sugar().Error(err)
+						logger.Sugar().Errorf("error inserting transactions with hash [%s]: [%v]", txHash, err.Error())
+						continue
 					}
 				}
 			}
 			//export mempool to "prioritized-transactions.txt"
-			mempool.ExportToFile()
+			if err = mempool.ExportToFile(); err != nil {
+				logger.Sugar().Error("error creating prioritized-transactions.txt", err)
+			}
 		}
 	}
 	logger.Sugar().Named("main").Info("Done...")
