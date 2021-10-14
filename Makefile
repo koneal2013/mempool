@@ -2,7 +2,7 @@ start:
 	@make clean
 	@make build
 	@echo "running main program..."
-	@./kava-challange
+	@./mempool
 build:
 	@make test
 	@go build
