@@ -1,6 +1,6 @@
 ## Instructions 
 Start by cloning this repository. 
-In a terminal window, change the working directory to ```<PATH WHERE YOU CLONED THE REPO>/kava-challange```.
+In a terminal window, change the working directory to ```<PATH WHERE YOU CLONED THE REPO>/mempool```.
 
 Running ```make start``` will:
 1. Clean the build directory
