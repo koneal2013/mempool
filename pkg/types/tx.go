@@ -1,7 +1,7 @@
 package types
 
 import (
-	"kava-challange/pkg/logging"
+	"mempool/pkg/logging"
 )
 
 type Tx struct {

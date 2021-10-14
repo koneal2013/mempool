@@ -3,9 +3,9 @@ package types_test
 import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"kava-challange/mocks"
-	"kava-challange/pkg/logging"
-	"kava-challange/pkg/types"
+	"mempool/mocks"
+	"mempool/pkg/logging"
+	"mempool/pkg/types"
 	"testing"
 )
 

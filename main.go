@@ -3,9 +3,9 @@ package main
 import (
 	"bufio"
 	"github.com/joho/godotenv"
-	"kava-challange/pkg/constants"
-	"kava-challange/pkg/logging"
-	"kava-challange/pkg/types"
+	"mempool/pkg/constants"
+	"mempool/pkg/logging"
+	"mempool/pkg/types"
 	"os"
 	"strconv"
 	"strings"

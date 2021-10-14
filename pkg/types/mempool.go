@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"kava-challange/pkg/logging"
+	"mempool/pkg/logging"
 	"os"
 	"sort"
 )

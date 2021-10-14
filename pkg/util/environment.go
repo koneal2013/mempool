@@ -1,7 +1,7 @@
 package util
 
 import (
-	"kava-challange/pkg/constants"
+	"mempool/pkg/constants"
 	"os"
 )
 
