@@ -5,7 +5,7 @@ In a terminal window, change the working directory to ```<PATH WHERE YOU CLONED 
 Running ```make start``` will:
 1. Clean the build directory
 2. Install Mockgen and generate the mocks for testing
-3. Run all test in the ```/kava-challange/pkg``` directory
+3. Run all test in the ```/mempool/pkg``` directory
 4. Compile and install the applicaton
 5. Execute the application
 
