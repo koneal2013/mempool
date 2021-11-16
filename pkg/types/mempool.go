@@ -37,7 +37,7 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
 	return &mempool{
 		Once:         &sync.Once{},
 		Transactions: sortedmap.New(maxMempoolSize, compareTx),
-		txChan:       make(chan *Tx, 100),
+		txChan:       make(chan *Tx),
 	}
 }
 
