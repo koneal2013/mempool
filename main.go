@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 			scanner := bufio.NewScanner(transactionFile)
 			scanner.Split(bufio.ScanLines)
 			currentLine := 0
-			waitGroup := sync.WaitGroup{}
+			waitGroup := &sync.WaitGroup{}
 			for scanner.Scan() {
 				currentLine++
 				rawTransaction := strings.Fields(scanner.Text())
@@ -57,10 +58,11 @@ func main() {
 							return
 						}
 					}
-				}(currentLine, rawTransaction, &waitGroup)
+				}(currentLine, rawTransaction, waitGroup)
 			}
-			waitGroup.Wait()
+			time.Sleep(time.Second * 30)
 			mempool.CloseTxInsertChan()
+			waitGroup.Wait()
 			//export mempool to "prioritized-transactions.txt"
 			if err = mempool.ExportToFile(); err != nil {
 				logger.Sugar().Error("error creating prioritized-transactions.txt", err)

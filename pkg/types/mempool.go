@@ -12,21 +12,16 @@ import (
 var (
 	maxMempoolSize int
 	logger         logging.LoggingSystem
-	txChan         chan *Tx
 )
 
 const (
 	ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
 )
 
-type memsync struct {
-	*sync.Once
-	*sync.Mutex
-}
-
 type mempool struct {
-	sync         *memsync
+	*sync.Once
 	Transactions *sortedmap.SortedMap
+	txChan       chan *Tx
 }
 
 type MempoolI interface {
@@ -40,31 +35,16 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
 	maxMempoolSize = maxPoolSize
 	logger = ls
 	return &mempool{
-		sync: &memsync{
-			Once:  &sync.Once{},
-			Mutex: &sync.Mutex{},
-		},
+		Once:         &sync.Once{},
 		Transactions: sortedmap.New(maxMempoolSize, compareTx),
+		txChan:       make(chan *Tx, 100),
 	}
 }
 
 func (mp mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
 	tx.calculateTotalFees()
-	mp.sync.Do(func() {
-		txChan = make(chan *Tx, 100)
-		go func() {
-			err := mp.processTx(group)
-			if err != nil {
-				return
-			}
-		}()
-		go func() {
-			err := mp.processTx(group)
-			if err != nil {
-				return
-			}
-		}()
+	mp.Do(func() {
 		go func() {
 			err := mp.processTx(group)
 			if err != nil {
@@ -72,7 +52,7 @@ func (mp mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 			}
 		}()
 	})
-	txChan <- tx
+	mp.txChan <- tx
 	return nil
 }
 func (mp mempool) processTx(wg *sync.WaitGroup) (err error) {
@@ -80,7 +60,6 @@ func (mp mempool) processTx(wg *sync.WaitGroup) (err error) {
 	defer wg.Done()
 	for {
 		//when mempool is full, prioritize transactions with higher fee
-		mp.sync.Lock()
 		if mp.Transactions.Len() == maxMempoolSize {
 			txToBeDeleted, _ := mp.Transactions.Get(mp.Transactions.GetSortedKeyByIndex(mp.Transactions.Len() - 1))
 			txHashToDelete, _ := mp.Transactions.BoundedKeys(txToBeDeleted, txToBeDeleted)
@@ -88,17 +67,13 @@ func (mp mempool) processTx(wg *sync.WaitGroup) (err error) {
 				errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", txHashToDelete[0])
 			}
 		}
-		mp.sync.Unlock()
-		transaction, ok := <-txChan
+		transaction, ok := <-mp.txChan
 		if !ok {
-			fmt.Println("ok is false")
 			return
 		}
-		mp.sync.Lock()
 		if !mp.Transactions.Insert(transaction.TxHash, transaction) {
 			logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] already exists", transaction.TxHash)
 		}
-		mp.sync.Unlock()
 	}
 }
 
@@ -126,9 +101,7 @@ func (mp mempool) ExportToFile() (err error) {
 		return err
 	} else {
 		defer prioritizedMempoolFile.Close()
-		mp.sync.Lock()
 		sortedTxs, _ := mp.Transactions.BatchGet(mp.Transactions.Keys())
-		mp.sync.Unlock()
 		for _, tx := range sortedTxs {
 			if _, err = prioritizedMempoolFile.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.(*Tx).TxHash, tx.(*Tx).Gas, tx.(*Tx).FeePerGas, tx.(*Tx).Signature, tx.(*Tx).TotalFee)); err != nil {
 				logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.(*Tx).TxHash, tx.(*Tx).Gas, tx.(*Tx).FeePerGas, tx.(*Tx).Signature)
@@ -140,5 +113,5 @@ func (mp mempool) ExportToFile() (err error) {
 }
 
 func (mp mempool) CloseTxInsertChan() {
-	close(txChan)
+	close(mp.txChan)
 }
