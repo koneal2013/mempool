@@ -15,6 +15,7 @@ The program output 'prioritized-transactions.txt' can be found in the project ro
 
 ### Set Up and Run
 ```bash
+source .env
 make start
 ```
 ### Test
