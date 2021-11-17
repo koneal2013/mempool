@@ -11,10 +11,6 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/koneal2013/go-sortedmap v0.0.0-20211115202731-3f673eb3d312 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	github.com/koneal2013/go-sortedmap v0.0.0-20211115202731-3f673eb3d312
+	github.com/umpc/go-sortedmap v0.0.0-20180422175548-64ab94c482f4 // indirect
 )
