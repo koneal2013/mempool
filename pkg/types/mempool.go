@@ -40,7 +40,7 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
 	}
 }
 
-func (mp mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
+func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
 	tx.calculateTotalFees()
 	mp.Do(func() {
@@ -60,7 +60,7 @@ func (mp mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.txChan <- tx
 	return nil
 }
-func (mp mempool) processTx(wg *sync.WaitGroup) (err error) {
+func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
 	wg.Add(1)
 	defer wg.Done()
 	for {
@@ -86,7 +86,7 @@ func (mp mempool) processTx(wg *sync.WaitGroup) (err error) {
 	}
 }
 
-func (mp mempool) dropTx(txHash string) (err error) {
+func (mp *mempool) dropTx(txHash string) (err error) {
 	if tx, exists := mp.Transactions.Get(txHash); exists {
 		mp.logger.Sugar().Named("mempool/dropTx").Debugf("dropping low priority transaction with hash [%s] and total fee of [%v]", tx.(*Tx).TxHash, tx.(*Tx).TotalFee)
 		mp.Transactions.Delete(txHash)
@@ -104,7 +104,7 @@ func compareTx(i interface{}, j interface{}) bool {
 	return i.(*Tx).TotalFee > j.(*Tx).TotalFee
 }
 
-func (mp mempool) ExportToFile() (err error) {
+func (mp *mempool) ExportToFile() (err error) {
 	if prioritizedMempoolFile, err := os.Create("prioritized-transactions.txt"); err != nil {
 		mp.logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
 		return err
@@ -121,6 +121,6 @@ func (mp mempool) ExportToFile() (err error) {
 	return nil
 }
 
-func (mp mempool) CloseTxInsertChan() {
+func (mp *mempool) CloseTxInsertChan() {
 	close(mp.txChan)
 }
