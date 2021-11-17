@@ -60,7 +60,7 @@ func main() {
 					}
 				}(currentLine, rawTransaction, waitGroup)
 			}
-			time.Sleep(time.Second * 40)
+			time.Sleep(time.Second)
 			mempool.CloseTxInsertChan()
 			waitGroup.Wait()
 			//export mempool to "prioritized-transactions.txt"
