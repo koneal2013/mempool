@@ -66,7 +66,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
 	for {
 		//when mempool is full, prioritize transactions with higher fee
 		mp.mu.Lock()
-		if mp.Transactions.Len() >= mp.maxMemPoolSize {
+		if mp.Transactions.Len() > mp.maxMemPoolSize {
 			txToBeDeleted, _ := mp.Transactions.Get(mp.Transactions.GetSortedKeyByIndex(mp.Transactions.Len() - 1))
 			txHashToDelete, _ := mp.Transactions.BoundedKeys(txToBeDeleted, txToBeDeleted)
 			if err = mp.dropTx(txHashToDelete[0].(string)); err != nil {
