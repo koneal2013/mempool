@@ -6,6 +6,7 @@ import (
 	"mempool/pkg/constants"
 	"mempool/pkg/logging"
 	"mempool/pkg/types"
+	"mempool/pkg/util"
 	"os"
 	"strconv"
 	"strings"
@@ -60,7 +61,11 @@ func main() {
 					}
 				}(currentLine, rawTransaction, waitGroup)
 			}
-			time.Sleep(time.Second)
+			if !util.DevelopmentEnvironment() {
+				time.Sleep(time.Second)
+			} else {
+				time.Sleep(time.Second * 25)
+			}
 			mempool.CloseTxInsertChan()
 			waitGroup.Wait()
 			//export mempool to "prioritized-transactions.txt"
