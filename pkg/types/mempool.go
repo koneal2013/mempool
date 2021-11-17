@@ -70,7 +70,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
 			txToBeDeleted, _ := mp.Transactions.Get(mp.Transactions.GetSortedKeyByIndex(mp.Transactions.Len() - 1))
 			txHashToDelete, _ := mp.Transactions.BoundedKeys(txToBeDeleted, txToBeDeleted)
 			if err = mp.dropTx(txHashToDelete[0].(string)); err != nil {
-				errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", txHashToDelete[0])
+				errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", txHashToDelete[0].(string))
 			}
 		}
 		mp.mu.Unlock()
