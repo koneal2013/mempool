@@ -32,7 +32,7 @@ func main() {
 			defer transactionFile.Close()
 			scanner := bufio.NewScanner(transactionFile)
 			scanner.Split(bufio.ScanLines)
-			currentLine := 0
+			var currentLine int
 			waitGroup := &sync.WaitGroup{}
 			for scanner.Scan() {
 				currentLine++
