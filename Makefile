@@ -39,6 +39,6 @@ files := $(filter-out %_test.go,$(wildcard pkg/**/*.go))
 
 mocks:
 	@rm -rf mocks
-	@go install github.com/golang/mock/mockgen
+	@go get github.com/golang/mock/mockgen
 	@echo "generating mocks..."
 	@$(foreach file, $(files), mockgen -package mocks -destination mocks/$(subst /,_,$(file)) -source $(file);)
