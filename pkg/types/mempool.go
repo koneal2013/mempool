@@ -14,8 +14,8 @@ const (
 )
 
 type mempool struct {
-	*sync.Once
-	*sync.Mutex
+	once           *sync.Once
+	mu             *sync.Mutex
 	Transactions   *sortedmap.SortedMap
 	txChan         chan *Tx
 	maxMemPoolSize int
@@ -31,8 +31,8 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
 		ls.Fatal(ERR_MEMPOOL_SIZE)
 	}
 	return &mempool{
-		Mutex:          &sync.Mutex{},
-		Once:           &sync.Once{},
+		mu:             &sync.Mutex{},
+		once:           &sync.Once{},
 		maxMemPoolSize: maxPoolSize,
 		logger:         ls,
 		Transactions:   sortedmap.New(maxPoolSize, compareTx),
@@ -43,7 +43,7 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
 func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
 	tx.calculateTotalFees()
-	mp.Do(func() {
+	mp.once.Do(func() {
 		go func() {
 			err := mp.processTx(group)
 			if err != nil {
@@ -65,7 +65,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
 	defer wg.Done()
 	for {
 		//when mempool is full, prioritize transactions with higher fee
-		mp.Lock()
+		mp.mu.Lock()
 		if mp.Transactions.Len() >= mp.maxMemPoolSize {
 			txToBeDeleted, _ := mp.Transactions.Get(mp.Transactions.GetSortedKeyByIndex(mp.Transactions.Len() - 1))
 			txHashToDelete, _ := mp.Transactions.BoundedKeys(txToBeDeleted, txToBeDeleted)
@@ -73,16 +73,16 @@ func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
 				errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", txHashToDelete[0])
 			}
 		}
-		mp.Unlock()
+		mp.mu.Unlock()
 		transaction, ok := <-mp.txChan
 		if !ok {
 			return
 		}
-		mp.Lock()
+		mp.mu.Lock()
 		if !mp.Transactions.Insert(transaction.TxHash, transaction) {
 			mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] already exists", transaction.TxHash)
 		}
-		mp.Unlock()
+		mp.mu.Unlock()
 	}
 }
 
