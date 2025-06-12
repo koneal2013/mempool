@@ -7,14 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/joho/godotenv"
 
 	"mempool/pkg/constants"
 	"mempool/pkg/logging"
 	"mempool/pkg/types"
-	"mempool/pkg/util"
 )
 
 func main() {
@@ -32,7 +30,6 @@ func main() {
 		if err != nil {
 			logger.Sugar().Fatalf("error initializing mempool: [%v]", err)
 		}
-		defer mempool.CloseTxInsertChan()
 		// Process transactions.txt and insert into mempool
 		if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil {
 			logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
@@ -45,8 +42,8 @@ func main() {
 			for scanner.Scan() {
 				currentLine++
 				rawTransaction := strings.Fields(scanner.Text())
+				waitGroup.Add(1)
 				go func(curLine int, rawTx []string, group *sync.WaitGroup) {
-					group.Add(1)
 					defer group.Done()
 					if len(rawTx) != 4 {
 						logger.Sugar().Errorf("transaction file at path [%s] is misformatted at line [%v]", constants.ENV_TRANSACTIONS_FILE_PATH, currentLine)
@@ -68,13 +65,8 @@ func main() {
 					}
 				}(currentLine, rawTransaction, waitGroup)
 			}
-			if !util.DevelopmentEnvironment() {
-				time.Sleep(time.Second)
-			} else {
-				time.Sleep(time.Minute * 2)
-			}
-			mempool.CloseTxInsertChan()
 			waitGroup.Wait()
+			mempool.CloseTxInsertChan()
 			if err = mempool.ExportToFile(); err != nil {
 				logger.Sugar().Error("error creating prioritized-transactions.txt", err)
 			}
