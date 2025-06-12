@@ -8,4 +8,4 @@ bin/
 .coverage/
 
 # ignore prioritized transactions
-prioritized-transactions.txt
+prioritized_transactions.txt
