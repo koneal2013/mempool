@@ -3,7 +3,7 @@
 <html>
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-		<title>types: Go Coverage Report</title>
+		<title>mempool: Go Coverage Report</title>
 		<style>
 			body {
 				background: black;
@@ -55,9 +55,21 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">kava-challange/pkg/types/mempool.go (81.1%)</option>
+				<option value="file0">mempool/cmd/mempool/main.go (0.0%)</option>
 				
-				<option value="file1">kava-challange/pkg/types/tx.go (100.0%)</option>
+				<option value="file1">mempool/mocks/pkg_logging_zap.go (16.7%)</option>
+				
+				<option value="file2">mempool/mocks/pkg_types_mempool.go (0.0%)</option>
+				
+				<option value="file3">mempool/mocks/pkg_types_tx.go (0.0%)</option>
+				
+				<option value="file4">mempool/pkg/logging/zap.go (80.0%)</option>
+				
+				<option value="file5">mempool/pkg/types/mempool.go (70.8%)</option>
+				
+				<option value="file6">mempool/pkg/types/tx.go (100.0%)</option>
+				
+				<option value="file7">mempool/pkg/util/environment.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -71,111 +83,802 @@
 		</div>
 		<div id="content">
 		
-		<pre class="file" id="file0" style="display: none">package types
+		<pre class="file" id="file0" style="display: none">package main
 
 import (
+        "bufio"
         "fmt"
-        "github.com/pkg/errors"
-        "kava-challange/pkg/logging"
         "os"
-        "sort"
+        "strconv"
+        "strings"
+        "sync"
+        "time"
+
+        "github.com/joho/godotenv"
+
+        "mempool/pkg/constants"
+        "mempool/pkg/logging"
+        "mempool/pkg/types"
+        "mempool/pkg/util"
 )
 
-var (
-        maxMempoolSize int
-        logger         logging.LoggingSystem
+func main() <span class="cov0" title="0">{
+        godotenv.Load(".env")
+        maxMempoolSize := os.Getenv(constants.ENV_MAX_MEMPOOL_SIZE)
+        logger := logging.Logger()
+        defer logger.Sync()
+        fmt.Println(len("hello")) // TODO: Remove this debug line
+        logger.Sugar().Infof("initializing mempool of size [%v]", maxMempoolSize)
+        if maxPoolSize, err := strconv.Atoi(maxMempoolSize); err != nil </span><span class="cov0" title="0">{
+                logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
+        }</span> else<span class="cov0" title="0"> {
+                logger.Sugar().Info("retrieving transactions and inserting into mempool")
+                mempool := types.NewMempool(maxPoolSize, logger) // Type will be inferred, no change needed here if methods are on interface
+                // Process transactions.txt and insert into mempool
+                if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil </span><span class="cov0" title="0">{
+                        logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
+                }</span> else<span class="cov0" title="0"> {
+                        defer transactionFile.Close()
+                        scanner := bufio.NewScanner(transactionFile)
+                        scanner.Split(bufio.ScanLines)
+                        var currentLine int
+                        waitGroup := &amp;sync.WaitGroup{}
+                        for scanner.Scan() </span><span class="cov0" title="0">{
+                                currentLine++
+                                rawTransaction := strings.Fields(scanner.Text())
+                                go func(curLine int, rawTx []string, group *sync.WaitGroup) </span><span class="cov0" title="0">{
+                                        group.Add(1)
+                                        defer group.Done()
+                                        if len(rawTx) != 4 </span><span class="cov0" title="0">{
+                                                logger.Sugar().Errorf("transaction file at path [%s] is misformatted at line [%v]", constants.ENV_TRANSACTIONS_FILE_PATH, currentLine)
+                                                return
+                                        }</span>
+                                        <span class="cov0" title="0">txHash := strings.TrimPrefix(rawTx[0], "TxHash=")
+                                        if gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[1], "Gas="), 64); err != nil </span><span class="cov0" title="0">{
+                                                logger.Sugar().Errorf("gas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
+                                                return
+                                        }</span> else<span class="cov0" title="0"> if feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[2], "FeePerGas="), 64); err != nil </span><span class="cov0" title="0">{
+                                                logger.Sugar().Errorf("feePerGas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
+                                                return
+                                        }</span> else<span class="cov0" title="0"> {
+                                                signature := strings.TrimPrefix(rawTx[3], "Signature=")
+                                                if err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas), group); err != nil </span><span class="cov0" title="0">{
+                                                        logger.Sugar().Errorf("error inserting transaction with hash [%s]: [%v]", txHash, err.Error())
+                                                        return
+                                                }</span>
+                                        }
+                                }(currentLine, rawTransaction, waitGroup)
+                        }
+                        <span class="cov0" title="0">if !util.DevelopmentEnvironment() </span><span class="cov0" title="0">{
+                                time.Sleep(time.Second)
+                        }</span> else<span class="cov0" title="0"> {
+                                time.Sleep(time.Minute * 2)
+                        }</span>
+                        <span class="cov0" title="0">mempool.CloseTxInsertChan()
+                        waitGroup.Wait()
+                        if err = mempool.ExportToFile(); err != nil </span><span class="cov0" title="0">{
+                                logger.Sugar().Error("error creating prioritized-transactions.txt", err)
+                        }</span>
+                }
+        }
+        <span class="cov0" title="0">logger.Sugar().Named("main").Info("Done...")</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">// Code generated by MockGen. DO NOT EDIT.
+// Source: pkg/logging/zap.go
+
+// Package mocks is a generated GoMock package.
+package mocks
+
+import (
+        reflect "reflect"
+
+        gomock "github.com/golang/mock/gomock"
+        zap "go.uber.org/zap"
+        zapcore "go.uber.org/zap/zapcore"
+)
+
+// MockLoggingSystem is a mock of LoggingSystem interface.
+type MockLoggingSystem struct {
+        ctrl     *gomock.Controller
+        recorder *MockLoggingSystemMockRecorder
+}
+
+// MockLoggingSystemMockRecorder is the mock recorder for MockLoggingSystem.
+type MockLoggingSystemMockRecorder struct {
+        mock *MockLoggingSystem
+}
+
+// NewMockLoggingSystem creates a new mock instance.
+func NewMockLoggingSystem(ctrl *gomock.Controller) *MockLoggingSystem <span class="cov8" title="1">{
+        mock := &amp;MockLoggingSystem{ctrl: ctrl}
+        mock.recorder = &amp;MockLoggingSystemMockRecorder{mock}
+        return mock
+}</span>
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLoggingSystem) EXPECT() *MockLoggingSystemMockRecorder <span class="cov8" title="1">{
+        return m.recorder
+}</span>
+
+// Check mocks base method.
+func (m *MockLoggingSystem) Check(arg0 zapcore.Level, arg1 string) *zapcore.CheckedEntry <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "Check", arg0, arg1)
+        ret0, _ := ret[0].(*zapcore.CheckedEntry)
+        return ret0
+}</span>
+
+// Check indicates an expected call of Check.
+func (mr *MockLoggingSystemMockRecorder) Check(arg0, arg1 interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Check", reflect.TypeOf((*MockLoggingSystem)(nil).Check), arg0, arg1)
+}</span>
+
+// Core mocks base method.
+func (m *MockLoggingSystem) Core() zapcore.Core <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "Core")
+        ret0, _ := ret[0].(zapcore.Core)
+        return ret0
+}</span>
+
+// Core indicates an expected call of Core.
+func (mr *MockLoggingSystemMockRecorder) Core() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Core", reflect.TypeOf((*MockLoggingSystem)(nil).Core))
+}</span>
+
+// DPanic mocks base method.
+func (m *MockLoggingSystem) DPanic(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "DPanic", varargs...)</span>
+}
+
+// DPanic indicates an expected call of DPanic.
+func (mr *MockLoggingSystemMockRecorder) DPanic(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DPanic", reflect.TypeOf((*MockLoggingSystem)(nil).DPanic), varargs...)
+}</span>
+
+// Debug mocks base method.
+func (m *MockLoggingSystem) Debug(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Debug", varargs...)</span>
+}
+
+// Debug indicates an expected call of Debug.
+func (mr *MockLoggingSystemMockRecorder) Debug(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Debug", reflect.TypeOf((*MockLoggingSystem)(nil).Debug), varargs...)
+}</span>
+
+// Error mocks base method.
+func (m *MockLoggingSystem) Error(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Error", varargs...)</span>
+}
+
+// Error indicates an expected call of Error.
+func (mr *MockLoggingSystemMockRecorder) Error(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Error", reflect.TypeOf((*MockLoggingSystem)(nil).Error), varargs...)
+}</span>
+
+// Fatal mocks base method.
+func (m *MockLoggingSystem) Fatal(arg0 string, arg1 ...zap.Field) <span class="cov8" title="1">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov8" title="1">m.ctrl.Call(m, "Fatal", varargs...)</span>
+}
+
+// Fatal indicates an expected call of Fatal.
+func (mr *MockLoggingSystemMockRecorder) Fatal(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov8" title="1">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fatal", reflect.TypeOf((*MockLoggingSystem)(nil).Fatal), varargs...)
+}</span>
+
+// Info mocks base method.
+func (m *MockLoggingSystem) Info(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Info", varargs...)</span>
+}
+
+// Info indicates an expected call of Info.
+func (mr *MockLoggingSystemMockRecorder) Info(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*MockLoggingSystem)(nil).Info), varargs...)
+}</span>
+
+// Named mocks base method.
+func (m *MockLoggingSystem) Named(arg0 string) *zap.Logger <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "Named", arg0)
+        ret0, _ := ret[0].(*zap.Logger)
+        return ret0
+}</span>
+
+// Named indicates an expected call of Named.
+func (mr *MockLoggingSystemMockRecorder) Named(arg0 interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Named", reflect.TypeOf((*MockLoggingSystem)(nil).Named), arg0)
+}</span>
+
+// Panic mocks base method.
+func (m *MockLoggingSystem) Panic(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Panic", varargs...)</span>
+}
+
+// Panic indicates an expected call of Panic.
+func (mr *MockLoggingSystemMockRecorder) Panic(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Panic", reflect.TypeOf((*MockLoggingSystem)(nil).Panic), varargs...)
+}</span>
+
+// Sugar mocks base method.
+func (m *MockLoggingSystem) Sugar() *zap.SugaredLogger <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "Sugar")
+        ret0, _ := ret[0].(*zap.SugaredLogger)
+        return ret0
+}</span>
+
+// Sugar indicates an expected call of Sugar.
+func (mr *MockLoggingSystemMockRecorder) Sugar() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sugar", reflect.TypeOf((*MockLoggingSystem)(nil).Sugar))
+}</span>
+
+// Sync mocks base method.
+func (m *MockLoggingSystem) Sync() error <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "Sync")
+        ret0, _ := ret[0].(error)
+        return ret0
+}</span>
+
+// Sync indicates an expected call of Sync.
+func (mr *MockLoggingSystemMockRecorder) Sync() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sync", reflect.TypeOf((*MockLoggingSystem)(nil).Sync))
+}</span>
+
+// Warn mocks base method.
+func (m *MockLoggingSystem) Warn(arg0 string, arg1 ...zap.Field) <span class="cov8" title="1">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{arg0}
+        for _, a := range arg1 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov8" title="1">m.ctrl.Call(m, "Warn", varargs...)</span>
+}
+
+// Warn indicates an expected call of Warn.
+func (mr *MockLoggingSystemMockRecorder) Warn(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov8" title="1">{
+        mr.mock.ctrl.T.Helper()
+        varargs := append([]interface{}{arg0}, arg1...)
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Warn", reflect.TypeOf((*MockLoggingSystem)(nil).Warn), varargs...)
+}</span>
+
+// With mocks base method.
+func (m *MockLoggingSystem) With(arg0 ...zap.Field) *zap.Logger <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{}
+        for _, a := range arg0 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">ret := m.ctrl.Call(m, "With", varargs...)
+        ret0, _ := ret[0].(*zap.Logger)
+        return ret0</span>
+}
+
+// With indicates an expected call of With.
+func (mr *MockLoggingSystemMockRecorder) With(arg0 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "With", reflect.TypeOf((*MockLoggingSystem)(nil).With), arg0...)
+}</span>
+
+// WithOptions mocks base method.
+func (m *MockLoggingSystem) WithOptions(arg0 ...zap.Option) *zap.Logger <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        varargs := []interface{}{}
+        for _, a := range arg0 </span><span class="cov0" title="0">{
+                varargs = append(varargs, a)
+        }</span>
+        <span class="cov0" title="0">ret := m.ctrl.Call(m, "WithOptions", varargs...)
+        ret0, _ := ret[0].(*zap.Logger)
+        return ret0</span>
+}
+
+// WithOptions indicates an expected call of WithOptions.
+func (mr *MockLoggingSystemMockRecorder) WithOptions(arg0 ...interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithOptions", reflect.TypeOf((*MockLoggingSystem)(nil).WithOptions), arg0...)
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">// Code generated by MockGen. DO NOT EDIT.
+// Source: pkg/types/mempool.go
+
+// Package mocks is a generated GoMock package.
+package mocks
+
+import (
+        types "mempool/pkg/types"
+        reflect "reflect"
+        sync "sync"
+
+        gomock "github.com/golang/mock/gomock"
+)
+
+// MockMempool is a mock of Mempool interface.
+type MockMempool struct {
+        ctrl     *gomock.Controller
+        recorder *MockMempoolMockRecorder
+}
+
+// MockMempoolMockRecorder is the mock recorder for MockMempool.
+type MockMempoolMockRecorder struct {
+        mock *MockMempool
+}
+
+// NewMockMempool creates a new mock instance.
+func NewMockMempool(ctrl *gomock.Controller) *MockMempool <span class="cov0" title="0">{
+        mock := &amp;MockMempool{ctrl: ctrl}
+        mock.recorder = &amp;MockMempoolMockRecorder{mock}
+        return mock
+}</span>
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMempool) EXPECT() *MockMempoolMockRecorder <span class="cov0" title="0">{
+        return m.recorder
+}</span>
+
+// AddTx mocks base method.
+func (m *MockMempool) AddTx(tx *types.Tx, group *sync.WaitGroup) error <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "AddTx", tx, group)
+        ret0, _ := ret[0].(error)
+        return ret0
+}</span>
+
+// AddTx indicates an expected call of AddTx.
+func (mr *MockMempoolMockRecorder) AddTx(tx, group interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTx", reflect.TypeOf((*MockMempool)(nil).AddTx), tx, group)
+}</span>
+
+// CloseTxInsertChan mocks base method.
+func (m *MockMempool) CloseTxInsertChan() <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        m.ctrl.Call(m, "CloseTxInsertChan")
+}</span>
+
+// CloseTxInsertChan indicates an expected call of CloseTxInsertChan.
+func (mr *MockMempoolMockRecorder) CloseTxInsertChan() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseTxInsertChan", reflect.TypeOf((*MockMempool)(nil).CloseTxInsertChan))
+}</span>
+
+// ExportToFile mocks base method.
+func (m *MockMempool) ExportToFile() error <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "ExportToFile")
+        ret0, _ := ret[0].(error)
+        return ret0
+}</span>
+
+// ExportToFile indicates an expected call of ExportToFile.
+func (mr *MockMempoolMockRecorder) ExportToFile() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportToFile", reflect.TypeOf((*MockMempool)(nil).ExportToFile))
+}</span>
+
+// GetTx mocks base method.
+func (m *MockMempool) GetTx(txHash string) (*types.Tx, bool) <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "GetTx", txHash)
+        ret0, _ := ret[0].(*types.Tx)
+        ret1, _ := ret[1].(bool)
+        return ret0, ret1
+}</span>
+
+// GetTx indicates an expected call of GetTx.
+func (mr *MockMempoolMockRecorder) GetTx(txHash interface{}) *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTx", reflect.TypeOf((*MockMempool)(nil).GetTx), txHash)
+}</span>
+
+// MaxMemPoolSize mocks base method.
+func (m *MockMempool) MaxMemPoolSize() int <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "MaxMemPoolSize")
+        ret0, _ := ret[0].(int)
+        return ret0
+}</span>
+
+// MaxMemPoolSize indicates an expected call of MaxMemPoolSize.
+func (mr *MockMempoolMockRecorder) MaxMemPoolSize() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxMemPoolSize", reflect.TypeOf((*MockMempool)(nil).MaxMemPoolSize))
+}</span>
+
+// MempoolLen mocks base method.
+func (m *MockMempool) MempoolLen() int <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        ret := m.ctrl.Call(m, "MempoolLen")
+        ret0, _ := ret[0].(int)
+        return ret0
+}</span>
+
+// MempoolLen indicates an expected call of MempoolLen.
+func (mr *MockMempoolMockRecorder) MempoolLen() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MempoolLen", reflect.TypeOf((*MockMempool)(nil).MempoolLen))
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">// Code generated by MockGen. DO NOT EDIT.
+// Source: pkg/types/tx.go
+
+// Package mocks is a generated GoMock package.
+package mocks
+
+import (
+        reflect "reflect"
+
+        gomock "github.com/golang/mock/gomock"
+)
+
+// MockTxI is a mock of TxI interface.
+type MockTxI struct {
+        ctrl     *gomock.Controller
+        recorder *MockTxIMockRecorder
+}
+
+// MockTxIMockRecorder is the mock recorder for MockTxI.
+type MockTxIMockRecorder struct {
+        mock *MockTxI
+}
+
+// NewMockTxI creates a new mock instance.
+func NewMockTxI(ctrl *gomock.Controller) *MockTxI <span class="cov0" title="0">{
+        mock := &amp;MockTxI{ctrl: ctrl}
+        mock.recorder = &amp;MockTxIMockRecorder{mock}
+        return mock
+}</span>
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTxI) EXPECT() *MockTxIMockRecorder <span class="cov0" title="0">{
+        return m.recorder
+}</span>
+
+// calculateTotalFees mocks base method.
+func (m *MockTxI) calculateTotalFees() <span class="cov0" title="0">{
+        m.ctrl.T.Helper()
+        m.ctrl.Call(m, "calculateTotalFees")
+}</span>
+
+// calculateTotalFees indicates an expected call of calculateTotalFees.
+func (mr *MockTxIMockRecorder) calculateTotalFees() *gomock.Call <span class="cov0" title="0">{
+        mr.mock.ctrl.T.Helper()
+        return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "calculateTotalFees", reflect.TypeOf((*MockTxI)(nil).calculateTotalFees))
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package logging
+
+import (
+        "go.uber.org/zap"
+        "go.uber.org/zap/zapcore"
+        "mempool/pkg/util"
+)
+
+var logger LoggingSystem = nil
+
+type LoggingSystem interface {
+        Sugar() *zap.SugaredLogger
+        Named(string) *zap.Logger
+        WithOptions(...zap.Option) *zap.Logger
+        With(...zap.Field) *zap.Logger
+        Check(zapcore.Level, string) *zapcore.CheckedEntry
+        Debug(string, ...zap.Field)
+        Info(string, ...zap.Field)
+        Warn(string, ...zap.Field)
+        Error(string, ...zap.Field)
+        DPanic(string, ...zap.Field)
+        Panic(string, ...zap.Field)
+        Fatal(string, ...zap.Field)
+        Sync() error
+        Core() zapcore.Core
+}
+
+func Logger() LoggingSystem <span class="cov8" title="1">{
+        if logger == nil </span><span class="cov8" title="1">{
+                if util.DevelopmentEnvironment() </span><span class="cov0" title="0">{
+                        logger, _ = zap.NewDevelopment(zap.AddStacktrace(zapcore.ErrorLevel))
+                }</span> else<span class="cov8" title="1"> {
+                        logger, _ = zap.NewProduction(zap.AddStacktrace(zapcore.ErrorLevel))
+                }</span>
+        }
+        <span class="cov8" title="1">return logger.Named("system")</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package types
+
+import (
+        "container/heap"
+        "fmt"
+        "os"
+        "sort"
+        "sync"
+
+        "github.com/pkg/errors"
+
+        "mempool/pkg/logging"
 )
 
 const (
         ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
 )
 
+// TxHeap implements heap.Interface for *Tx based on TotalFee (min-heap)
+type TxHeap []*Tx
+
+func (h TxHeap) Len() int           <span class="cov8" title="1">{ return len(h) }</span>
+func (h TxHeap) Less(i, j int) bool <span class="cov8" title="1">{ return h[i].TotalFee &lt; h[j].TotalFee }</span> // min-heap
+func (h TxHeap) Swap(i, j int)      <span class="cov8" title="1">{ h[i], h[j] = h[j], h[i] }</span>
+
+func (h *TxHeap) Push(x interface{}) <span class="cov8" title="1">{
+        *h = append(*h, x.(*Tx))
+}</span>
+
+func (h *TxHeap) Pop() interface{} <span class="cov8" title="1">{
+        old := *h
+        n := len(old)
+        x := old[n-1]
+        *h = old[0 : n-1]
+        return x
+}</span>
+
 type mempool struct {
-        Transactions []*Tx
+        once           *sync.Once
+        mu             *sync.Mutex    // Protects txMap and txHeap
+        txMap          map[string]*Tx // O(1) lookup by hash
+        txHeap         TxHeap         // Min-heap for priority management
+        txChan         chan *Tx
+        maxMemPoolSize int
+        logger         logging.LoggingSystem
+
+        // New fields for handling in-flight/pending transactions
+        muPendingChecks *sync.Mutex
+        pendingChecks   map[string]struct{} // Tracks hashes submitted to txChan but not yet in Transactions
 }
 
-type MempoolI interface {
-        AddTx(tx *Tx) (err error)
-        dropTx(tx *Tx) (err error)
-        sort()
-        contains(hash string) bool
+type Mempool interface {
+        AddTx(tx *Tx, group *sync.WaitGroup) (err error) // Adds a transaction to the mempool, processing it in a goroutine.
+        GetTx(txHash string) (*Tx, bool)                 // Retrieves a transaction by its hash from the mempool.
+        MempoolLen() int                                 // Returns the current number of transactions in the mempool.
+        CloseTxInsertChan()                              // Closes the transaction insertion channel.
+        ExportToFile() error                             // Exports the mempool contents to a file.
+        MaxMemPoolSize() int                             // Returns the maximum size of the mempool.
 }
 
-func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool <span class="cov8" title="1">{
+var _ Mempool = (*mempool)(nil)
+
+func NewMempool(maxPoolSize int, ls logging.LoggingSystem) Mempool <span class="cov8" title="1">{
         if maxPoolSize &lt;= 0 </span><span class="cov8" title="1">{
                 ls.Fatal(ERR_MEMPOOL_SIZE)
         }</span>
-        <span class="cov8" title="1">maxMempoolSize = maxPoolSize
-        logger = ls
-        return &amp;mempool{
-                Transactions: make([]*Tx, 0),
+        <span class="cov8" title="1">return &amp;mempool{
+                mu:             &amp;sync.Mutex{},
+                once:           &amp;sync.Once{},
+                maxMemPoolSize: maxPoolSize,
+                logger:         ls,
+                txMap:          make(map[string]*Tx, maxPoolSize),
+                txHeap:         make(TxHeap, 0, maxPoolSize),
+                txChan:         make(chan *Tx, 500000), // Consider if this buffer size is optimal
+                // Initialize new fields
+                muPendingChecks: &amp;sync.Mutex{},
+                pendingChecks:   make(map[string]struct{}),
         }</span>
 }
 
-func (mp *mempool) AddTx(tx *Tx) (err error) <span class="cov8" title="1">{
-        if exists := mp.contains(tx.TxHash); exists </span><span class="cov8" title="1">{
-                err = fmt.Errorf("transaction with hash [%s] already exists", tx.TxHash)
-                return err
-        }</span>
-        <span class="cov8" title="1">logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
+func (mp *mempool) MaxMemPoolSize() int <span class="cov8" title="1">{
+        return mp.maxMemPoolSize
+}</span>
+
+func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) <span class="cov8" title="1">{
+        mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
         tx.calculateTotalFees()
-        //when mempool is full, prioritize transactions with higher fee
-        if len(mp.Transactions) &gt;= maxMempoolSize </span><span class="cov8" title="1">{
-                if err = mp.dropTx(mp.Transactions[maxMempoolSize-1]); err != nil </span><span class="cov0" title="0">{
-                        return errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", tx.TxHash)
+
+        // Check 1: Is it already fully processed and in the main Transactions map?
+        mp.mu.Lock()
+        if _, exists := mp.txMap[tx.TxHash]; exists </span><span class="cov0" title="0">{
+                mp.mu.Unlock()
+                mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (already in main pool) with hash [%s]", tx.TxHash)
+                return errors.Errorf("Transaction with hash [%s] already exists in mempool", tx.TxHash)
+        }</span>
+        <span class="cov8" title="1">mp.mu.Unlock()
+
+        // Check 2: Is it currently pending processing (in txChan or about to be)?
+        mp.muPendingChecks.Lock()
+        if _, pending := mp.pendingChecks[tx.TxHash]; pending </span><span class="cov8" title="1">{
+                mp.muPendingChecks.Unlock()
+                mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (pending processing) with hash [%s]", tx.TxHash)
+                return errors.Errorf("Transaction with hash [%s] is already pending processing", tx.TxHash)
+        }</span>
+        // If not pending, mark it as pending before sending to channel
+        <span class="cov8" title="1">mp.pendingChecks[tx.TxHash] = struct{}{}
+        mp.muPendingChecks.Unlock()
+
+        mp.once.Do(func() </span><span class="cov8" title="1">{
+                // Simplified processor startup: ensure a fixed number of processors are started.
+                // The WaitGroup 'group' from the test will track individual transaction processing.
+                for i := 0; i &lt; 10; i++ </span><span class="cov8" title="1">{ // Number of processors
+                        go mp.processTx(group, mp.txChan)
                 }</span>
+        })
+
+        // Increment WaitGroup counter before sending to channel
+        <span class="cov8" title="1">group.Add(1)
+
+        // Try to send to channel. If it blocks indefinitely (e.g., chan full and no processors),
+        // this could be an issue. For now, assume channel has buffer or processors are active.
+        mp.txChan &lt;- tx
+        mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] accepted and sent to processing channel", tx.TxHash)
+        return nil</span> // Successfully queued
+}
+
+func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly &lt;-chan *Tx) <span class="cov8" title="1">{
+        // This WaitGroup 'wg' is for the test to wait for all its submitted transactions
+        // to complete processing. Each transaction processed will call Done().
+        // Note: wg.Add(1) should be called by the sender or handled carefully here.
+        // The original design had wg.Add(1) here.
+
+        for transaction := range txReadOnly </span><span class="cov8" title="1">{ // Loop until channel is closed
+                // wg.Add(1) // REMOVED: wg.Add(1) should be called by the sender (AddTx)
+
+                currentTxHash := transaction.TxHash
+                mp.logger.Sugar().Named("mempool/processTx").Debugf("Processing transaction with hash [%s]", currentTxHash)
+
+                // Remove from pendingChecks now that we've picked it up for processing.
+                mp.muPendingChecks.Lock()
+                delete(mp.pendingChecks, currentTxHash)
+                mp.muPendingChecks.Unlock()
+
+                mp.mu.Lock() // Lock for main Transactions map operations
+
+                // Final check for duplicates right before insertion attempt.
+                if _, exists := mp.txMap[currentTxHash]; exists </span><span class="cov0" title="0">{
+                        mp.logger.Sugar().Named("mempool/processTx").Warnf("Transaction with hash [%s] already exists in main pool (caught by final processor check). Discarding.", currentTxHash)
+                        mp.mu.Unlock()
+                        wg.Done() // Signal completion for this transaction
+                        continue</span>
+                }
+
+                // Logic for when mempool is full: prioritize transactions with higher fee
+                <span class="cov8" title="1">if len(mp.txHeap) &gt;= mp.maxMemPoolSize </span><span class="cov8" title="1">{
+                        // Pool full: check if new tx has higher priority than min
+                        minTx := mp.txHeap[0]
+                        if minTx.TotalFee &lt; transaction.TotalFee </span><span class="cov8" title="1">{
+                                // Drop min
+                                delete(mp.txMap, minTx.TxHash)
+                                heap.Pop(&amp;mp.txHeap)
+                        }</span> else<span class="cov0" title="0"> {
+                                mp.mu.Unlock()
+                                wg.Done() // Signal completion for this transaction
+                                continue</span>
+                        }
+                }
+                // Insert new tx
+                <span class="cov8" title="1">heap.Push(&amp;mp.txHeap, transaction)
+                mp.txMap[currentTxHash] = transaction
+                mp.mu.Unlock()
+                wg.Done()</span> // Signal completion for this transaction
         }
-        <span class="cov8" title="1">mp.Transactions = append(mp.Transactions, tx)
-        mp.sort()
+        <span class="cov8" title="1">mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")</span>
+}
+
+// dropTx must be called with mp.mu held by the caller.
+func (mp *mempool) dropTx(txHash string) (err error) <span class="cov0" title="0">{
+        mp.mu.Lock()
+        defer mp.mu.Unlock()
+        _, exists := mp.txMap[txHash]
+        if !exists </span><span class="cov0" title="0">{
+                return errors.Errorf("Transaction with hash [%s] doesn't exist in mempool to drop", txHash)
+        }</span>
+        // Remove from heap
+        <span class="cov0" title="0">for i, t := range mp.txHeap </span><span class="cov0" title="0">{
+                if t.TxHash == txHash </span><span class="cov0" title="0">{
+                        heap.Remove(&amp;mp.txHeap, i)
+                        break</span>
+                }
+        }
+        <span class="cov0" title="0">delete(mp.txMap, txHash)
         return nil</span>
 }
 
-func (mp *mempool) dropTx(tx *Tx) (err error) <span class="cov8" title="1">{
-        if exists := mp.contains(tx.TxHash); exists </span><span class="cov8" title="1">{
-                logger.Sugar().Named("mempool/dropTx").Debugf("dropping low priority transaction with hash [%s] and total fee of [%v]", tx.TxHash, tx.TotalFee)
-                mp.Transactions = mp.Transactions[:maxMempoolSize-1]
-                return nil
-        }</span>
-        <span class="cov0" title="0">err = fmt.Errorf("mempool does not contain a transaction with hash [%s]", tx.TxHash)
-        return err</span>
-}
-
-func (mp *mempool) sort() <span class="cov8" title="1">{
-        sort.Slice(mp.Transactions, func(i, j int) bool </span><span class="cov8" title="1">{
-                return mp.Transactions[i].TotalFee &gt; mp.Transactions[j].TotalFee
-        }</span>)
-}
-
-func (mp *mempool) contains(hash string) bool <span class="cov8" title="1">{
-        for _, tx := range mp.Transactions </span><span class="cov8" title="1">{
-                if len(mp.Transactions) &gt; 0 &amp;&amp; tx.TxHash == hash </span><span class="cov8" title="1">{
-                        return true
-                }</span>
-        }
-        <span class="cov8" title="1">return false</span>
-}
-
 func (mp *mempool) ExportToFile() (err error) <span class="cov8" title="1">{
-        if prioritizedMempoolFile, err := os.Create("prioritized-transactions.txt"); err != nil </span><span class="cov0" title="0">{
-                logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
+        mp.mu.Lock()
+        txs := make([]*Tx, 0, len(mp.txHeap))
+        for _, tx := range mp.txHeap </span><span class="cov0" title="0">{
+                txs = append(txs, tx)
+        }</span>
+        <span class="cov8" title="1">mp.mu.Unlock()
+        // Sort by TotalFee descending for export
+        sort.Slice(txs, func(i, j int) bool </span><span class="cov0" title="0">{ return txs[i].TotalFee &gt; txs[j].TotalFee }</span>)
+        <span class="cov8" title="1">file, err := os.Create("prioritized-transactions.txt")
+        if err != nil </span><span class="cov0" title="0">{
+                mp.logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
                 return err
-        }</span> else<span class="cov8" title="1"> {
-                defer prioritizedMempoolFile.Close()
-                for _, tx := range mp.Transactions </span><span class="cov8" title="1">{
-                        if _, err = prioritizedMempoolFile.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)); err != nil </span><span class="cov0" title="0">{
-                                logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
-                                continue</span>
-                        }
+        }</span>
+        <span class="cov8" title="1">defer file.Close()
+        for _, tx := range txs </span><span class="cov0" title="0">{
+                if _, err = file.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)); err != nil </span><span class="cov0" title="0">{
+                        mp.logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
+                        continue</span>
                 }
         }
         <span class="cov8" title="1">return nil</span>
 }
+
+func (mp *mempool) CloseTxInsertChan() <span class="cov8" title="1">{
+        close(mp.txChan)
+}</span>
+
+// GetTx retrieves a transaction from the mempool in a thread-safe manner.
+func (mp *mempool) GetTx(txHash string) (*Tx, bool) <span class="cov8" title="1">{
+        mp.mu.Lock()
+        defer mp.mu.Unlock()
+        tx, exists := mp.txMap[txHash]
+        return tx, exists
+}</span>
+
+// MempoolLen returns the current number of transactions in the mempool in a thread-safe manner.
+func (mp *mempool) MempoolLen() int <span class="cov8" title="1">{
+        mp.mu.Lock()
+        defer mp.mu.Unlock()
+        return len(mp.txMap)
+}</span>
 </pre>
 		
-		<pre class="file" id="file1" style="display: none">package types
+		<pre class="file" id="file6" style="display: none">package types
 
 import (
-        "kava-challange/pkg/logging"
+        "mempool/pkg/logging"
 )
 
 type Tx struct {
@@ -208,6 +911,18 @@ func NewTx(logger logging.LoggingSystem, txHash, signature string, gas, feePerGa
 
 func (tx *Tx) calculateTotalFees() <span class="cov8" title="1">{
         tx.TotalFee = tx.FeePerGas * tx.Gas
+}</span>
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package util
+
+import (
+        "mempool/pkg/constants"
+        "os"
+)
+
+func DevelopmentEnvironment() bool <span class="cov8" title="1">{
+        return os.Getenv(constants.ENV_DEBUG_ENVIRONMENT) == "true"
 }</span>
 </pre>
 		

@@ -1,7 +1,11 @@
 # mocks should be generated before tests and not stored in source control
 mocks/
 
+# bin directory for compiled binaries
+bin/
+
 # ignore code coverage files
 .coverage/
 
+# ignore prioritized transactions
 prioritized-transactions.txt

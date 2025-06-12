@@ -1,121 +1,221 @@
 package types
 
 import (
+	"container/heap"
 	"fmt"
-	"github.com/koneal2013/go-sortedmap"
-	"github.com/pkg/errors"
-	"mempool/pkg/logging"
 	"os"
+	"sort"
 	"sync"
+
+	"github.com/pkg/errors"
+
+	"mempool/pkg/logging"
 )
 
-const (
-	ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
+var (
+	ErrMempoolSize = errors.New("mempool size cannot be less than or equal to 0")
 )
+
+// TxHeap implements heap.Interface for *Tx based on TotalFee (min-heap)
+type TxHeap []*Tx
+
+func (h TxHeap) Len() int           { return len(h) }
+func (h TxHeap) Less(i, j int) bool { return h[i].TotalFee < h[j].TotalFee } // min-heap
+func (h TxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *TxHeap) Push(x interface{}) {
+	*h = append(*h, x.(*Tx))
+}
+
+func (h *TxHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
 
 type mempool struct {
 	once           *sync.Once
-	mu             *sync.Mutex
-	Transactions   *sortedmap.SortedMap
+	mu             *sync.Mutex    // Protects txMap and txHeap
+	txMap          map[string]*Tx // O(1) lookup by hash
+	txHeap         TxHeap         // Min-heap for priority management
 	txChan         chan *Tx
 	maxMemPoolSize int
 	logger         logging.LoggingSystem
+
+	// New fields for handling in-flight/pending transactions
+	muPendingChecks *sync.Mutex
+	pendingChecks   map[string]struct{} // Tracks hashes submitted to txChan but not yet in Transactions
 }
 
-type MempoolI interface {
-	AddTx(tx *Tx) (err error)
+type Mempool interface {
+	AddTx(tx *Tx, group *sync.WaitGroup) (err error) // Adds a transaction to the mempool, processing it in a goroutine.
+	GetTx(txHash string) (*Tx, bool)                 // Retrieves a transaction by its hash from the mempool.
+	MempoolLen() int                                 // Returns the current number of transactions in the mempool.
+	CloseTxInsertChan()                              // Closes the transaction insertion channel.
+	ExportToFile() error                             // Exports the mempool contents to a file.
+	MaxMemPoolSize() int                             // Returns the maximum size of the mempool.
 }
 
-func NewMempool(maxPoolSize int, ls logging.LoggingSystem) *mempool {
+var _ Mempool = (*mempool)(nil)
+
+func NewMempool(maxPoolSize int, ls logging.LoggingSystem) (Mempool, error) {
 	if maxPoolSize <= 0 {
-		ls.Fatal(ERR_MEMPOOL_SIZE)
+		return nil, ErrMempoolSize
 	}
 	return &mempool{
 		mu:             &sync.Mutex{},
 		once:           &sync.Once{},
 		maxMemPoolSize: maxPoolSize,
 		logger:         ls,
-		Transactions:   sortedmap.New(maxPoolSize, compareTx),
-		txChan:         make(chan *Tx, 10),
-	}
+		txMap:          make(map[string]*Tx, maxPoolSize),
+		txHeap:         make(TxHeap, 0, maxPoolSize),
+		txChan:         make(chan *Tx, 500000), // Consider if this buffer size is optimal
+		// Initialize new fields
+		muPendingChecks: &sync.Mutex{},
+		pendingChecks:   make(map[string]struct{}),
+	}, nil
+}
+
+func (mp *mempool) MaxMemPoolSize() int {
+	return mp.maxMemPoolSize
 }
 
 func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
 	tx.calculateTotalFees()
+
+	// Check 1: Is it already fully processed and in the main Transactions map?
+	mp.mu.Lock()
+	if _, exists := mp.txMap[tx.TxHash]; exists {
+		mp.mu.Unlock()
+		mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (already in main pool) with hash [%s]", tx.TxHash)
+		return errors.Errorf("Transaction with hash [%s] already exists in mempool", tx.TxHash)
+	}
+	mp.mu.Unlock()
+
+	// Check 2: Is it currently pending processing (in txChan or about to be)?
+	mp.muPendingChecks.Lock()
+	if _, pending := mp.pendingChecks[tx.TxHash]; pending {
+		mp.muPendingChecks.Unlock()
+		mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (pending processing) with hash [%s]", tx.TxHash)
+		return errors.Errorf("Transaction with hash [%s] is already pending processing", tx.TxHash)
+	}
+	// If not pending, mark it as pending before sending to channel
+	mp.pendingChecks[tx.TxHash] = struct{}{}
+	mp.muPendingChecks.Unlock()
+
 	mp.once.Do(func() {
-		go func() {
-			err := mp.processTx(group)
-			if err != nil {
-				return
-			}
-		}()
-		go func() {
-			err := mp.processTx(group)
-			if err != nil {
-				return
-			}
-		}()
+		// Simplified processor startup: ensure a fixed number of processors are started.
+		// The WaitGroup 'group' from the test will track individual transaction processing.
+		for i := 0; i < 10; i++ { // Number of processors
+			go mp.processTx(group, mp.txChan)
+		}
 	})
+
+	// Increment WaitGroup counter before sending to channel
+	group.Add(1)
+
+	// Try to send to channel. If it blocks indefinitely (e.g., chan full and no processors),
+	// this could be an issue. For now, assume channel has buffer or processors are active.
 	mp.txChan <- tx
-	return nil
+	mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] accepted and sent to processing channel", tx.TxHash)
+	return nil // Successfully queued
 }
-func (mp *mempool) processTx(wg *sync.WaitGroup) (err error) {
-	wg.Add(1)
-	defer wg.Done()
-	for {
-		//when mempool is full, prioritize transactions with higher fee
-		mp.mu.Lock()
-		if mp.Transactions.Len() > mp.maxMemPoolSize {
-			txToBeDeleted, _ := mp.Transactions.Get(mp.Transactions.GetSortedKeyByIndex(mp.Transactions.Len() - 1))
-			txHashToDelete, _ := mp.Transactions.BoundedKeys(txToBeDeleted, txToBeDeleted)
-			if err = mp.dropTx(txHashToDelete[0].(string)); err != nil {
-				errors.Wrapf(err, "unable to add transaction with hash [%s] because the mempool is full", txHashToDelete[0].(string))
+
+func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
+	// This WaitGroup 'wg' is for the test to wait for all its submitted transactions
+	// to complete processing. Each transaction processed will call Done().
+	// Note: wg.Add(1) should be called by the sender or handled carefully here.
+	// The original design had wg.Add(1) here.
+
+	for transaction := range txReadOnly { // Loop until channel is closed
+		// wg.Add(1) // REMOVED: wg.Add(1) should be called by the sender (AddTx)
+
+		currentTxHash := transaction.TxHash
+		mp.logger.Sugar().Named("mempool/processTx").Debugf("Processing transaction with hash [%s]", currentTxHash)
+
+		// Remove from pendingChecks now that we've picked it up for processing.
+		mp.muPendingChecks.Lock()
+		delete(mp.pendingChecks, currentTxHash)
+		mp.muPendingChecks.Unlock()
+
+		mp.mu.Lock() // Lock for main Transactions map operations
+
+		// Final check for duplicates right before insertion attempt.
+		if _, exists := mp.txMap[currentTxHash]; exists {
+			mp.logger.Sugar().Named("mempool/processTx").Warnf("Transaction with hash [%s] already exists in main pool (caught by final processor check). Discarding.", currentTxHash)
+			mp.mu.Unlock()
+			wg.Done() // Signal completion for this transaction
+			continue
+		}
+
+		// Logic for when mempool is full: prioritize transactions with higher fee
+		if len(mp.txHeap) >= mp.maxMemPoolSize {
+			// Pool full: check if new tx has higher priority than min
+			minTx := mp.txHeap[0]
+			if minTx.TotalFee < transaction.TotalFee {
+				// Drop min
+				delete(mp.txMap, minTx.TxHash)
+				heap.Pop(&mp.txHeap)
+			} else {
+				mp.mu.Unlock()
+				wg.Done() // Signal completion for this transaction
+				continue
 			}
 		}
+		// Insert new tx
+		heap.Push(&mp.txHeap, transaction)
+		mp.txMap[currentTxHash] = transaction
 		mp.mu.Unlock()
-		transaction, ok := <-mp.txChan
-		if !ok {
-			return
-		}
-		mp.mu.Lock()
-		if !mp.Transactions.Insert(transaction.TxHash, transaction) {
-			mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] already exists", transaction.TxHash)
-		}
-		mp.mu.Unlock()
+		wg.Done() // Signal completion for this transaction
 	}
+	mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
+// dropTx must be called with mp.mu held by the caller.
 func (mp *mempool) dropTx(txHash string) (err error) {
-	if tx, exists := mp.Transactions.Get(txHash); exists {
-		mp.logger.Sugar().Named("mempool/dropTx").Debugf("dropping low priority transaction with hash [%s] and total fee of [%v]", tx.(*Tx).TxHash, tx.(*Tx).TotalFee)
-		mp.Transactions.Delete(txHash)
-		return nil
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	_, exists := mp.txMap[txHash]
+	if !exists {
+		return errors.Errorf("Transaction with hash [%s] doesn't exist in mempool to drop", txHash)
 	}
-	return errors.Errorf("Tranaction with hash [%s] doesn't exist in mempool", txHash)
-}
-
-func compareTx(i interface{}, j interface{}) bool {
-	_, iok := i.(*Tx)
-	_, jok := j.(*Tx)
-	if !iok || !jok {
-		panic("incompatible types")
+	// Remove from heap
+	for i, t := range mp.txHeap {
+		if t.TxHash == txHash {
+			heap.Remove(&mp.txHeap, i)
+			break
+		}
 	}
-	return i.(*Tx).TotalFee > j.(*Tx).TotalFee
+	delete(mp.txMap, txHash)
+	return nil
 }
 
 func (mp *mempool) ExportToFile() (err error) {
-	if prioritizedMempoolFile, err := os.Create("prioritized-transactions.txt"); err != nil {
+	mp.mu.Lock()
+	txs := make([]*Tx, 0, len(mp.txHeap))
+	for _, tx := range mp.txHeap {
+		txs = append(txs, tx)
+	}
+	mp.mu.Unlock()
+	// Sort by TotalFee descending for export
+	sort.Slice(txs, func(i, j int) bool { return txs[i].TotalFee > txs[j].TotalFee })
+	fileName := os.Getenv("PRIORITIZED_TX_FILE_PATH")
+	if fileName == "" {
+		fileName = "./prioritized-transactions.txt"
+	}
+	file, err := os.Create(fileName)
+	if err != nil {
 		mp.logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
 		return err
-	} else {
-		defer prioritizedMempoolFile.Close()
-		sortedTxs, _ := mp.Transactions.BatchGet(mp.Transactions.Keys())
-		for _, tx := range sortedTxs {
-			if _, err = prioritizedMempoolFile.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.(*Tx).TxHash, tx.(*Tx).Gas, tx.(*Tx).FeePerGas, tx.(*Tx).Signature, tx.(*Tx).TotalFee)); err != nil {
-				mp.logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.(*Tx).TxHash, tx.(*Tx).Gas, tx.(*Tx).FeePerGas, tx.(*Tx).Signature)
-				continue
-			}
+	}
+	defer file.Close()
+	for _, tx := range txs {
+		if _, err = file.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)); err != nil {
+			mp.logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
+			continue
 		}
 	}
 	return nil
@@ -123,4 +223,19 @@ func (mp *mempool) ExportToFile() (err error) {
 
 func (mp *mempool) CloseTxInsertChan() {
 	close(mp.txChan)
+}
+
+// GetTx retrieves a transaction from the mempool in a thread-safe manner.
+func (mp *mempool) GetTx(txHash string) (*Tx, bool) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	tx, exists := mp.txMap[txHash]
+	return tx, exists
+}
+
+// MempoolLen returns the current number of transactions in the mempool in a thread-safe manner.
+func (mp *mempool) MempoolLen() int {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	return len(mp.txMap)
 }

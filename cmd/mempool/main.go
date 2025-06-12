@@ -2,16 +2,19 @@ package main
 
 import (
 	"bufio"
-	"github.com/joho/godotenv"
-	"mempool/pkg/constants"
-	"mempool/pkg/logging"
-	"mempool/pkg/types"
-	"mempool/pkg/util"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
+
+	"mempool/pkg/constants"
+	"mempool/pkg/logging"
+	"mempool/pkg/types"
+	"mempool/pkg/util"
 )
 
 func main() {
@@ -19,14 +22,18 @@ func main() {
 	maxMempoolSize := os.Getenv(constants.ENV_MAX_MEMPOOL_SIZE)
 	logger := logging.Logger()
 	defer logger.Sync()
+	fmt.Println(len("hello")) // TODO: Remove this debug line
 	logger.Sugar().Infof("initializing mempool of size [%v]", maxMempoolSize)
 	if maxPoolSize, err := strconv.Atoi(maxMempoolSize); err != nil {
 		logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
 	} else {
 		logger.Sugar().Info("retrieving transactions and inserting into mempool")
-		mempool := types.NewMempool(maxPoolSize, logger)
-		//Process transactions.txt and insert into mempool
-		//mempool.Once.Do(func(){fmt.Println("test do once...")})
+		mempool, err := types.NewMempool(maxPoolSize, logger) // Type will be inferred, no change needed here if methods are on interface
+		if err != nil {
+			logger.Sugar().Fatalf("error initializing mempool: [%v]", err)
+		}
+		defer mempool.CloseTxInsertChan()
+		// Process transactions.txt and insert into mempool
 		if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil {
 			logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
 		} else {
@@ -64,11 +71,10 @@ func main() {
 			if !util.DevelopmentEnvironment() {
 				time.Sleep(time.Second)
 			} else {
-				time.Sleep(time.Second * 25)
+				time.Sleep(time.Minute * 2)
 			}
 			mempool.CloseTxInsertChan()
 			waitGroup.Wait()
-			//export mempool to "prioritized-transactions.txt"
 			if err = mempool.ExportToFile(); err != nil {
 				logger.Sugar().Error("error creating prioritized-transactions.txt", err)
 			}
