@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"mempool/pkg/constants"
 	"mempool/pkg/logging"
 )
 
@@ -174,25 +175,6 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
-// dropTx must be called with mp.mu held by the caller.
-func (mp *mempool) dropTx(txHash string) (err error) {
-	mp.mu.Lock()
-	defer mp.mu.Unlock()
-	_, exists := mp.txMap[txHash]
-	if !exists {
-		return errors.Errorf("Transaction with hash [%s] doesn't exist in mempool to drop", txHash)
-	}
-	// Remove from heap
-	for i, t := range mp.txHeap {
-		if t.TxHash == txHash {
-			heap.Remove(&mp.txHeap, i)
-			break
-		}
-	}
-	delete(mp.txMap, txHash)
-	return nil
-}
-
 func (mp *mempool) ExportToFile() (err error) {
 	mp.mu.Lock()
 	txs := make([]*Tx, 0, len(mp.txHeap))
@@ -202,7 +184,7 @@ func (mp *mempool) ExportToFile() (err error) {
 	mp.mu.Unlock()
 	// Sort by TotalFee descending for export
 	sort.Slice(txs, func(i, j int) bool { return txs[i].TotalFee > txs[j].TotalFee })
-	fileName := os.Getenv("PRIORITIZED_TX_FILE_PATH")
+	fileName := os.Getenv(constants.PRIORITIZED_TX_FILE_PATH)
 	if fileName == "" {
 		fileName = "./prioritized-transactions.txt"
 	}
