@@ -4,7 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"os"
-	"sort"
+	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -150,32 +150,29 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
-// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee descending.
-func (mp *mempool) ExportToFile() (err error) {
-	mp.mu.Lock()
-	txs := make([]*Tx, 0, len(mp.txHeap))
-	for _, tx := range mp.txHeap {
-		txs = append(txs, tx)
+// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee ascending.
+func (mp *mempool) ExportToFile() error {
+	var sb strings.Builder
+	mp.logger.Sugar().Infof("Exporting %d transactions", len(mp.txMap))
+	for mp.txHeap.Len() > 0 {
+		tx := heap.Pop(&mp.txHeap).(*Tx)
+		fmt.Fprintf(&sb, "TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)
 	}
-	mp.mu.Unlock()
-	// Sort by TotalFee descending for export
-	sort.Slice(txs, func(i, j int) bool { return txs[i].TotalFee > txs[j].TotalFee })
+
 	fileName := os.Getenv(constants.PRIORITIZED_TX_FILE_PATH)
 	if fileName == "" {
 		fileName = "./prioritized-transactions.txt"
 	}
 	file, err := os.Create(fileName)
 	if err != nil {
-		mp.logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
-		return err
+		return errors.Wrapf(err, "failed to create file %s", fileName)
 	}
 	defer file.Close()
-	for _, tx := range txs {
-		if _, err = file.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)); err != nil {
-			mp.logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
-			continue
-		}
+	bytes, err := file.WriteString(sb.String())
+	if err != nil {
+		return errors.Wrapf(err, "failed to write to file %s", fileName)
 	}
+	mp.logger.Sugar().Infof("Exported %d bytes to file %s", bytes, fileName)
 	return nil
 }
 
