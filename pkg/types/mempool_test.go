@@ -112,6 +112,7 @@ func TestMempool_AddTx(t *testing.T) {
 			txAnotherDistinct := types.NewTx(logger, "txHash_another_distinct", "sigAD", 55.0, 0.5)
 
 			wg := &sync.WaitGroup{}
+			memPool.StartProcessors(wg, 2) // Start processors before adding transactions
 
 			switch tc.name {
 			case "success_add_and_replace_if_higher_prio_when_full":

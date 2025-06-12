@@ -26,10 +26,12 @@ func main() {
 		logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
 	} else {
 		logger.Sugar().Info("retrieving transactions and inserting into mempool")
-		mempool, err := types.NewMempool(maxPoolSize, logger) // Type will be inferred, no change needed here if methods are on interface
+		mempool, err := types.NewMempool(maxPoolSize, logger)
 		if err != nil {
 			logger.Sugar().Fatalf("error initializing mempool: [%v]", err)
 		}
+		waitGroup := &sync.WaitGroup{}
+		mempool.StartProcessors(waitGroup, 10) // Start 10 processors explicitly
 		// Process transactions.txt and insert into mempool
 		if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil {
 			logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
@@ -38,32 +40,30 @@ func main() {
 			scanner := bufio.NewScanner(transactionFile)
 			scanner.Split(bufio.ScanLines)
 			var currentLine int
-			waitGroup := &sync.WaitGroup{}
 			for scanner.Scan() {
 				currentLine++
 				rawTransaction := strings.Fields(scanner.Text())
-				waitGroup.Add(1)
-				go func(curLine int, rawTx []string, group *sync.WaitGroup) {
-					defer group.Done()
-					if len(rawTx) != 4 {
-						logger.Sugar().Errorf("transaction file at path [%s] is misformatted at line [%v]", constants.ENV_TRANSACTIONS_FILE_PATH, currentLine)
-						return
-					}
-					txHash := strings.TrimPrefix(rawTx[0], "TxHash=")
-					if gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[1], "Gas="), 64); err != nil {
-						logger.Sugar().Errorf("gas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
-						return
-					} else if feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[2], "FeePerGas="), 64); err != nil {
-						logger.Sugar().Errorf("feePerGas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
-						return
-					} else {
-						signature := strings.TrimPrefix(rawTx[3], "Signature=")
-						if err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas), group); err != nil {
-							logger.Sugar().Errorf("error inserting transaction with hash [%s]: [%v]", txHash, err.Error())
-							return
-						}
-					}
-				}(currentLine, rawTransaction, waitGroup)
+				if len(rawTransaction) != 4 {
+					logger.Sugar().Errorf("transaction file at path [%s] is misformatted at line [%v]", constants.ENV_TRANSACTIONS_FILE_PATH, currentLine)
+					continue
+				}
+				txHash := strings.TrimPrefix(rawTransaction[0], "TxHash=")
+				gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[1], "Gas="), 64)
+				if err != nil {
+					logger.Sugar().Errorf("gas conversion error for transaction with hash [%s] on line [%v]", txHash, currentLine)
+					continue
+				}
+				feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[2], "FeePerGas="), 64)
+				if err != nil {
+					logger.Sugar().Errorf("feePerGas conversion error for transaction with hash [%s] on line [%v]", txHash, currentLine)
+					continue
+				}
+				signature := strings.TrimPrefix(rawTransaction[3], "Signature=")
+				err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas), waitGroup)
+				if err != nil {
+					logger.Sugar().Errorf("error inserting transaction with hash [%s]: [%v]", txHash, err.Error())
+					continue
+				}
 			}
 			waitGroup.Wait()
 			mempool.CloseTxInsertChan()

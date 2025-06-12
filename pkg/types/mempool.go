@@ -18,7 +18,6 @@ var (
 )
 
 type mempool struct {
-	once           *sync.Once
 	mu             *sync.Mutex    // Protects txMap and txHeap
 	txMap          map[string]*Tx // O(1) lookup by hash
 	txHeap         TxHeap         // Min-heap for priority management
@@ -32,12 +31,13 @@ type mempool struct {
 }
 
 type Mempool interface {
-	AddTx(tx *Tx, group *sync.WaitGroup) (err error) // Adds a transaction to the mempool, processing it in a goroutine.
-	GetTx(txHash string) (*Tx, bool)                 // Retrieves a transaction by its hash from the mempool.
-	MempoolLen() int                                 // Returns the current number of transactions in the mempool.
-	CloseTxInsertChan()                              // Closes the transaction insertion channel.
-	ExportToFile() error                             // Exports the mempool contents to a file.
-	MaxMemPoolSize() int                             // Returns the maximum size of the mempool.
+	AddTx(tx *Tx, group *sync.WaitGroup) (err error)       // Adds a transaction to the mempool, processing it in a goroutine.
+	GetTx(txHash string) (*Tx, bool)                       // Retrieves a transaction by its hash from the mempool.
+	MempoolLen() int                                       // Returns the current number of transactions in the mempool.
+	CloseTxInsertChan()                                    // Closes the transaction insertion channel.
+	ExportToFile() error                                   // Exports the mempool contents to a file.
+	MaxMemPoolSize() int                                   // Returns the maximum size of the mempool.
+	StartProcessors(wg *sync.WaitGroup, numProcessors int) // Starts a specified number of goroutines to process transactions from the mempool.
 }
 
 var _ Mempool = (*mempool)(nil)
@@ -48,7 +48,6 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) (Mempool, error) {
 	}
 	return &mempool{
 		mu:             &sync.Mutex{},
-		once:           &sync.Once{},
 		maxMemPoolSize: maxPoolSize,
 		logger:         ls,
 		txMap:          make(map[string]*Tx, maxPoolSize),
@@ -88,22 +87,17 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.pendingChecks[tx.TxHash] = struct{}{}
 	mp.muPendingChecks.Unlock()
 
-	mp.once.Do(func() {
-		// Simplified processor startup: ensure a fixed number of processors are started.
-		// The WaitGroup 'group' from the test will track individual transaction processing.
-		for i := 0; i < 10; i++ { // Number of processors
-			go mp.processTx(group, mp.txChan)
-		}
-	})
-
-	// Increment WaitGroup counter before sending to channel
+	// Only increment WaitGroup if the transaction will actually be sent to the channel
 	group.Add(1)
-
-	// Try to send to channel. If it blocks indefinitely (e.g., chan full and no processors),
-	// this could be an issue. For now, assume channel has buffer or processors are active.
 	mp.txChan <- tx
 	mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] accepted and sent to processing channel", tx.TxHash)
 	return nil // Successfully queued
+}
+
+func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors int) {
+	for i := 0; i < numProcessors; i++ {
+		go mp.processTx(wg, mp.txChan)
+	}
 }
 
 func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
