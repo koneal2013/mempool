@@ -17,25 +17,6 @@ var (
 	ErrMempoolSize = errors.New("mempool size cannot be less than or equal to 0")
 )
 
-// TxHeap implements heap.Interface for *Tx based on TotalFee (min-heap)
-type TxHeap []*Tx
-
-func (h TxHeap) Len() int           { return len(h) }
-func (h TxHeap) Less(i, j int) bool { return h[i].TotalFee < h[j].TotalFee } // min-heap
-func (h TxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-
-func (h *TxHeap) Push(x interface{}) {
-	*h = append(*h, x.(*Tx))
-}
-
-func (h *TxHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
 type mempool struct {
 	once           *sync.Once
 	mu             *sync.Mutex    // Protects txMap and txHeap
