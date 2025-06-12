@@ -20,7 +20,7 @@ import (
 func TestNewMempool(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
-		maxPoolSize int
+		maxPoolSize uint32
 		isError     bool
 		isFatal     bool
 	}{
@@ -62,7 +62,7 @@ func TestMempool_AddTx(t *testing.T) {
 		gas         float64
 		feePerGas   float64
 		signature   string
-		maxPoolSize int
+		maxPoolSize uint32
 	}{
 		{
 			name:        "success_add_and_replace_if_higher_prio_when_full",
@@ -213,7 +213,7 @@ func TestMempool_ExportToFile(t *testing.T) {
 		feePerGas   float64
 		signature   string
 		isError     bool
-		maxPoolSize int
+		maxPoolSize uint32
 	}{
 		{
 			name:        "success",
@@ -254,8 +254,8 @@ func BenchmarkMempool_AddTx(b *testing.B) {
 	for _, numTxs := range sizes {
 		b.Run(fmt.Sprintf("NumTxs-%d", numTxs), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				b.StopTimer()                                    // Stop timer for setup
-				memPool, err := types.NewMempool(numTxs, logger) // Max pool size same as numTxs for this benchmark
+				b.StopTimer()                                            // Stop timer for setup
+				memPool, err := types.NewMempool(uint32(numTxs), logger) // Max pool size same as numTxs for this benchmark
 				require.NoError(b, err)
 				txs := make([]*types.Tx, numTxs)
 				for j := 0; j < numTxs; j++ {
@@ -285,7 +285,7 @@ func BenchmarkMempool_ExportToFile(b *testing.B) {
 		b.Run(fmt.Sprintf("PoolSize-%d", size), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer() // Stop timer for setup
-				memPool, err := types.NewMempool(size, logger)
+				memPool, err := types.NewMempool(uint32(size), logger)
 				require.NoError(b, err)
 				wg := &sync.WaitGroup{}
 				for j := 0; j < size; j++ {

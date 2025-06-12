@@ -20,9 +20,9 @@ var (
 type mempool struct {
 	mu             *sync.Mutex    // Protects txMap and txHeap
 	txMap          map[string]*Tx // O(1) lookup by hash
-	txHeap         TxHeap         // Min-heap for priority management
+	txHeap         TxHeap         // Min-heap for priority management O(log n) for insertion and removal
 	txChan         chan *Tx
-	maxMemPoolSize int
+	maxMemPoolSize uint32 // Maximum size of the mempool (max value of uint32 is 4,294,967,295)
 	logger         logging.LoggingSystem
 
 	// New fields for handling in-flight/pending transactions
@@ -36,13 +36,13 @@ type Mempool interface {
 	MempoolLen() int                                       // Returns the current number of transactions in the mempool.
 	CloseTxInsertChan()                                    // Closes the transaction insertion channel.
 	ExportToFile() error                                   // Exports the mempool contents to a file.
-	MaxMemPoolSize() int                                   // Returns the maximum size of the mempool.
+	MaxMemPoolSize() uint32                                // Returns the maximum size of the mempool.
 	StartProcessors(wg *sync.WaitGroup, numProcessors int) // Starts a specified number of goroutines to process transactions from the mempool.
 }
 
 var _ Mempool = (*mempool)(nil)
 
-func NewMempool(maxPoolSize int, ls logging.LoggingSystem) (Mempool, error) {
+func NewMempool(maxPoolSize uint32, ls logging.LoggingSystem) (Mempool, error) {
 	if maxPoolSize <= 0 {
 		return nil, ErrMempoolSize
 	}
@@ -59,7 +59,7 @@ func NewMempool(maxPoolSize int, ls logging.LoggingSystem) (Mempool, error) {
 	}, nil
 }
 
-func (mp *mempool) MaxMemPoolSize() int {
+func (mp *mempool) MaxMemPoolSize() uint32 {
 	return mp.maxMemPoolSize
 }
 
@@ -94,12 +94,14 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	return nil // Successfully queued
 }
 
+// StartProcessors starts a specified number of goroutines to process transactions from the mempool.
 func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors int) {
 	for i := 0; i < numProcessors; i++ {
 		go mp.processTx(wg, mp.txChan)
 	}
 }
 
+// processTx processes transactions from the txReadOnly channel.
 func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	// This WaitGroup 'wg' is for the test to wait for all its submitted transactions
 	// to complete processing. Each transaction processed will call Done().
@@ -107,8 +109,6 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	// The original design had wg.Add(1) here.
 
 	for transaction := range txReadOnly { // Loop until channel is closed
-		// wg.Add(1) // REMOVED: wg.Add(1) should be called by the sender (AddTx)
-
 		currentTxHash := transaction.TxHash
 		mp.logger.Sugar().Named("mempool/processTx").Debugf("Processing transaction with hash [%s]", currentTxHash)
 
@@ -128,7 +128,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 		}
 
 		// Logic for when mempool is full: prioritize transactions with higher fee
-		if len(mp.txHeap) >= mp.maxMemPoolSize {
+		if uint32(len(mp.txHeap)) >= mp.maxMemPoolSize {
 			// Pool full: check if new tx has higher priority than min
 			minTx := mp.txHeap[0]
 			if minTx.TotalFee < transaction.TotalFee {
@@ -150,6 +150,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
+// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee descending.
 func (mp *mempool) ExportToFile() (err error) {
 	mp.mu.Lock()
 	txs := make([]*Tx, 0, len(mp.txHeap))
@@ -178,6 +179,7 @@ func (mp *mempool) ExportToFile() (err error) {
 	return nil
 }
 
+// CloseTxInsertChan closes the transaction insertion channel.
 func (mp *mempool) CloseTxInsertChan() {
 	close(mp.txChan)
 }

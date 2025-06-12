@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -20,13 +19,12 @@ func main() {
 	maxMempoolSize := os.Getenv(constants.ENV_MAX_MEMPOOL_SIZE)
 	logger := logging.Logger()
 	defer logger.Sync()
-	fmt.Println(len("hello")) // TODO: Remove this debug line
 	logger.Sugar().Infof("initializing mempool of size [%v]", maxMempoolSize)
 	if maxPoolSize, err := strconv.Atoi(maxMempoolSize); err != nil {
 		logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
 	} else {
 		logger.Sugar().Info("retrieving transactions and inserting into mempool")
-		mempool, err := types.NewMempool(maxPoolSize, logger)
+		mempool, err := types.NewMempool(uint32(maxPoolSize), logger)
 		if err != nil {
 			logger.Sugar().Fatalf("error initializing mempool: [%v]", err)
 		}
