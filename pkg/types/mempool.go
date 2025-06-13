@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 
 	"mempool/pkg/constants"
 	"mempool/pkg/logging"
@@ -31,12 +32,12 @@ type mempool struct {
 }
 
 type Mempool interface {
-	AddTx(tx *Tx, group *sync.WaitGroup) (err error)          // Adds a transaction to the mempool, processing it in a goroutine.
-	GetTx(txHash string) (*Tx, bool)                          // Retrieves a transaction by its hash from the mempool.
-	MempoolLen() int                                          // Returns the current number of transactions in the mempool.
-	CloseTxInsertChan()                                       // Closes the transaction insertion channel.
-	ExportToFile() error                                      // Exports the mempool contents to a file.
-	MaxMemPoolSize() uint32                                   // Returns the maximum size of the mempool.
+	AddTx(tx *Tx, group *sync.WaitGroup) (err error)         // Adds a transaction to the mempool, processing it in a goroutine.
+	GetTx(txHash string) (*Tx, bool)                         // Retrieves a transaction by its hash from the mempool.
+	MempoolLen() int                                         // Returns the current number of transactions in the mempool.
+	CloseTxInsertChan()                                      // Closes the transaction insertion channel.
+	ExportToFile() error                                     // Exports the mempool contents to a file.
+	MaxMemPoolSize() uint32                                  // Returns the maximum size of the mempool.
 	StartProcessors(wg *sync.WaitGroup, numProcessors uint8) // Starts a specified number of goroutines to process transactions from the mempool.
 }
 
@@ -63,14 +64,14 @@ func (mp *mempool) MaxMemPoolSize() uint32 {
 }
 
 func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
-	mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
+	mp.logger.Named("mempool/AddTx").Debug("calculating total fee for transaction", zap.String("txHash", tx.TxHash))
 	tx.calculateTotalFees()
 
 	// Check 1: Is it already fully processed and in the main Transactions map?
 	mp.mu.Lock()
 	if _, exists := mp.txMap[tx.TxHash]; exists {
 		mp.mu.Unlock()
-		mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (already in main pool) with hash [%s]", tx.TxHash)
+		mp.logger.Named("mempool/AddTx").Warn("rejected duplicate transaction (already in main pool)", zap.String("txHash", tx.TxHash))
 		return errors.Errorf("Transaction with hash [%s] already exists in mempool", tx.TxHash)
 	}
 	mp.mu.Unlock()
@@ -79,7 +80,7 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	mp.muPendingChecks.Lock()
 	if _, pending := mp.pendingChecks[tx.TxHash]; pending {
 		mp.muPendingChecks.Unlock()
-		mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (pending processing) with hash [%s]", tx.TxHash)
+		mp.logger.Named("mempool/AddTx").Warn("rejected duplicate transaction (pending processing)", zap.String("txHash", tx.TxHash))
 		return errors.Errorf("Transaction with hash [%s] is already pending processing", tx.TxHash)
 	}
 	// If not pending, mark it as pending before sending to channel
@@ -89,7 +90,7 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 	// Only increment WaitGroup if the transaction will actually be sent to the channel
 	group.Add(1)
 	mp.txChan <- tx
-	mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] accepted and sent to processing channel", tx.TxHash)
+	mp.logger.Named("mempool/AddTx").Debug("Transaction with hash accepted and sent to processing channel", zap.String("txHash", tx.TxHash))
 	return nil // Successfully queued
 }
 
@@ -109,7 +110,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 
 	for transaction := range txReadOnly { // Loop until channel is closed
 		currentTxHash := transaction.TxHash
-		mp.logger.Sugar().Named("mempool/processTx").Debugf("Processing transaction with hash [%s]", currentTxHash)
+		mp.logger.Named("mempool/processTx").Debug("Processing transaction", zap.String("txHash", currentTxHash))
 
 		// Remove from pendingChecks now that we've picked it up for processing.
 		mp.muPendingChecks.Lock()
@@ -120,7 +121,7 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 
 		// Final check for duplicates right before insertion attempt.
 		if _, exists := mp.txMap[currentTxHash]; exists {
-			mp.logger.Sugar().Named("mempool/processTx").Warnf("Transaction with hash [%s] already exists in main pool (caught by final processor check). Discarding.", currentTxHash)
+			mp.logger.Named("mempool/processTx").Warn("Transaction already exists in main pool (caught by final processor check). Discarding.", zap.String("txHash", currentTxHash))
 			mp.mu.Unlock()
 			wg.Done() // Signal completion for this transaction
 			continue
@@ -146,13 +147,13 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 		mp.mu.Unlock()
 		wg.Done() // Signal completion for this transaction
 	}
-	mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")
+	mp.logger.Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
 // ExportToFile exports the contents of the mempool to a file, sorted by TotalFee ascending.
 func (mp *mempool) ExportToFile() error {
 	var sb strings.Builder
-	mp.logger.Sugar().Infof("Exporting %d transactions", len(mp.txMap))
+	mp.logger.Info("Exporting transactions", zap.Int("count", len(mp.txMap)))
 	for mp.txHeap.Len() > 0 {
 		tx := heap.Pop(&mp.txHeap).(*Tx)
 		fmt.Fprintf(&sb, "TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)
@@ -171,7 +172,7 @@ func (mp *mempool) ExportToFile() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to write to file %s", fileName)
 	}
-	mp.logger.Sugar().Infof("Exported %d bytes to file %s", bytes, fileName)
+	mp.logger.Info("Exported bytes to file", zap.Int("bytes", bytes), zap.String("fileName", fileName))
 	return nil
 }
 
