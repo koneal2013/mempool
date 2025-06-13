@@ -124,11 +124,11 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 
 		// Logic for when mempool is full: prioritize transactions with higher fee
 		if uint32(len(mp.txHeap)) >= mp.maxMemPoolSize {
-			// Pool full: check if new tx has higher priority than min
-			minTx := mp.txHeap[0]
-			if minTx.TotalFee < transaction.TotalFee {
-				// Drop min
-				delete(mp.txMap, minTx.TxHash)
+			// Pool full: check if new tx has higher priority than the current max (top of max-heap)
+			maxTx := mp.txHeap[0]
+			if transaction.TotalFee > maxTx.TotalFee {
+				// Optionally: replace maxTx with the new transaction (not typical for mempool, but shown for completeness)
+				delete(mp.txMap, maxTx.TxHash)
 				heap.Pop(&mp.txHeap)
 			} else {
 				mp.mu.Unlock()
