@@ -34,7 +34,7 @@ type mempool struct {
 type Mempool interface {
 	AddTx(tx *Tx, group *sync.WaitGroup) (err error)         // Adds a transaction to the mempool, processing it in a goroutine.
 	GetTx(txHash string) (*Tx, bool)                         // Retrieves a transaction by its hash from the mempool.
-	MempoolLen() int                                         // Returns the current number of transactions in the mempool.
+	MempoolLen() uint32                                      // Returns the current number of transactions in the mempool.
 	CloseTxInsertChan()                                      // Closes the transaction insertion channel.
 	ExportToFile() error                                     // Exports the mempool contents to a file.
 	MaxMemPoolSize() uint32                                  // Returns the maximum size of the mempool.
@@ -185,8 +185,8 @@ func (mp *mempool) GetTx(txHash string) (*Tx, bool) {
 }
 
 // MempoolLen returns the current number of transactions in the mempool in a thread-safe manner.
-func (mp *mempool) MempoolLen() int {
+func (mp *mempool) MempoolLen() uint32 {
 	mp.mu.Lock()
 	defer mp.mu.Unlock()
-	return len(mp.txMap)
+	return uint32(len(mp.txMap))
 }

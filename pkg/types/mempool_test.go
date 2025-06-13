@@ -129,8 +129,8 @@ func TestMempool_AddTx(t *testing.T) {
 				assert.Error(t, errAddDuplicateLowPrio, "Adding a duplicate low priority transaction should fail (caught by AddTx)")
 				assert.Nil(t, errAddHighPrio, "Adding the high priority transaction should succeed (replacing low prio)")
 
-				assert.Equal(t, 1, memPool.MempoolLen(), "Mempool length should be 1") // Use MempoolLen()
-				finalTx, inPool := memPool.GetTx(txHighPriority.TxHash)                // Use GetTx()
+				assert.Equal(t, uint32(1), memPool.MempoolLen(), "Mempool length should be 1") // Use MempoolLen()
+				finalTx, inPool := memPool.GetTx(txHighPriority.TxHash)                        // Use GetTx()
 				assert.True(t, inPool, "High priority transaction should be in the mempool")
 				if inPool { // Added check for finalTx to avoid panic if not in pool
 					require.NotNil(t, finalTx, "High priority transaction pointer should not be nil if in pool")
@@ -153,8 +153,8 @@ func TestMempool_AddTx(t *testing.T) {
 				assert.Error(t, errAddDuplicate, "Adding a duplicate transaction should fail (caught by AddTx)")
 				assert.Nil(t, errAddDistinct, "Adding the distinct transaction should succeed")
 
-				assert.Equal(t, 2, memPool.MempoolLen(), "Mempool length should be 2") // Use MempoolLen()
-				_, inPool := memPool.GetTx(txFromTestCase.TxHash)                      // Use GetTx()
+				assert.Equal(t, uint32(2), memPool.MempoolLen(), "Mempool length should be 2") // Use MempoolLen()
+				_, inPool := memPool.GetTx(txFromTestCase.TxHash)                              // Use GetTx()
 				assert.True(t, inPool, "Original transaction should be in the mempool")
 				_, inPoolHP := memPool.GetTx(txHighPriority.TxHash) // Use GetTx()
 				assert.True(t, inPoolHP, "Distinct (high priority) transaction should be in the mempool")
@@ -172,8 +172,8 @@ func TestMempool_AddTx(t *testing.T) {
 				assert.Nil(t, errAddSecondDistinct, "Adding the second distinct transaction should succeed")
 				assert.Error(t, errAddDuplicateOfFirst, "Adding a duplicate of the first transaction should fail (caught by AddTx)")
 
-				assert.Equal(t, 2, memPool.MempoolLen(), "Mempool length should be 2") // Use MempoolLen()
-				_, inPoolFirst := memPool.GetTx(txFromTestCase.TxHash)                 // Use GetTx()
+				assert.Equal(t, uint32(2), memPool.MempoolLen(), "Mempool length should be 2") // Use MempoolLen()
+				_, inPoolFirst := memPool.GetTx(txFromTestCase.TxHash)                         // Use GetTx()
 				assert.True(t, inPoolFirst, "First transaction should be in the mempool")
 				_, inPoolSecond := memPool.GetTx(txAnotherDistinct.TxHash) // Use GetTx()
 				assert.True(t, inPoolSecond, "Second distinct transaction should be in the mempool")
@@ -191,7 +191,7 @@ func TestMempool_AddTx(t *testing.T) {
 				assert.Error(t, errAddDuplicateLowPrio, "Adding a duplicate of the low priority tx should fail (caught by AddTx)")
 				assert.Nil(t, errAddHighPrioToReplace, "Adding the high priority transaction (to cause replacement) should succeed")
 
-				assert.Equal(t, 1, memPool.MempoolLen(), "Mempool length should be 1 after replacement") // Use MempoolLen()
+				assert.Equal(t, uint32(1), memPool.MempoolLen(), "Mempool length should be 1 after replacement") // Use MempoolLen()
 
 				finalTx, inPool := memPool.GetTx(txHighPriority.TxHash) // Use GetTx()
 				assert.True(t, inPool, "High priority transaction should be in the mempool after replacement")
