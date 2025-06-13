@@ -1,3 +1,25 @@
+# Mempool Project
+
+## Recent Changes
+
+### Min-Heap Transaction Prioritization
+- The mempool now uses a **min-heap** (`TxHeap`) for transaction prioritization.
+- The transaction with the **lowest** `TotalFee` is always at the top of the heap.
+- When the mempool is full, a new transaction will only replace the lowest-fee transaction if its fee is higher. This ensures the mempool always contains the highest-fee transactions.
+
+### Exporting Transactions in Descending Order
+- The `ExportToFile` function now pops all transactions from the min-heap, collects them in a slice, and **reverses the slice** before writing to the output file.
+- This guarantees that the exported file lists transactions from **highest to lowest TotalFee**.
+
+### Updated Tests
+- All heap-related tests have been updated to reflect min-heap behavior (lowest fee at the top, popped first).
+- Integration and mempool tests now expect the correct prioritization and eviction logic.
+
+### Documentation and Comments
+- All code comments and documentation have been updated to reference the min-heap structure and its behavior.
+
+---
+
 ## Instructions
 
 Start by cloning this repository.

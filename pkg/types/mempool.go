@@ -124,11 +124,11 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 
 		// Logic for when mempool is full: prioritize transactions with higher fee
 		if uint32(len(mp.txHeap)) >= mp.maxMemPoolSize {
-			// Pool full: check if new tx has higher priority than the current max (top of max-heap)
-			maxTx := mp.txHeap[0]
-			if transaction.TotalFee > maxTx.TotalFee {
-				// Optionally: replace maxTx with the new transaction (not typical for mempool, but shown for completeness)
-				delete(mp.txMap, maxTx.TxHash)
+			// Pool full: check if new tx has higher priority than the current min (top of min-heap)
+			minTx := mp.txHeap[0]
+			if transaction.TotalFee > minTx.TotalFee {
+				// Replace minTx with the new higher-fee transaction
+				delete(mp.txMap, minTx.TxHash)
 				heap.Pop(&mp.txHeap)
 			} else {
 				mp.mu.Unlock()
@@ -148,9 +148,16 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 // ExportToFile exports the contents of the mempool to a file, sorted by TotalFee descending.
 func (mp *mempool) ExportToFile() error {
 	var sb strings.Builder
+	txsDesc := make([]*Tx, 0, len(mp.txHeap))
 	mp.logger.Info("Exporting transactions", zap.Int("count", len(mp.txHeap)))
 	for mp.txHeap.Len() > 0 {
 		tx := heap.Pop(&mp.txHeap).(*Tx)
+		txsDesc = append(txsDesc, tx)
+	}
+
+	// Sort transactions by TotalFee in descending order
+	for i := len(txsDesc) - 1; i >= 0; i-- {
+		tx := txsDesc[i]
 		fmt.Fprintf(&sb, "TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)
 	}
 
