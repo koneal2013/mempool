@@ -31,13 +31,13 @@ type mempool struct {
 }
 
 type Mempool interface {
-	AddTx(tx *Tx, group *sync.WaitGroup) (err error)       // Adds a transaction to the mempool, processing it in a goroutine.
-	GetTx(txHash string) (*Tx, bool)                       // Retrieves a transaction by its hash from the mempool.
-	MempoolLen() int                                       // Returns the current number of transactions in the mempool.
-	CloseTxInsertChan()                                    // Closes the transaction insertion channel.
-	ExportToFile() error                                   // Exports the mempool contents to a file.
-	MaxMemPoolSize() uint32                                // Returns the maximum size of the mempool.
-	StartProcessors(wg *sync.WaitGroup, numProcessors int) // Starts a specified number of goroutines to process transactions from the mempool.
+	AddTx(tx *Tx, group *sync.WaitGroup) (err error)          // Adds a transaction to the mempool, processing it in a goroutine.
+	GetTx(txHash string) (*Tx, bool)                          // Retrieves a transaction by its hash from the mempool.
+	MempoolLen() int                                          // Returns the current number of transactions in the mempool.
+	CloseTxInsertChan()                                       // Closes the transaction insertion channel.
+	ExportToFile() error                                      // Exports the mempool contents to a file.
+	MaxMemPoolSize() uint32                                   // Returns the maximum size of the mempool.
+	StartProcessors(wg *sync.WaitGroup, numProcessors uint8) // Starts a specified number of goroutines to process transactions from the mempool.
 }
 
 var _ Mempool = (*mempool)(nil)
@@ -47,13 +47,12 @@ func NewMempool(maxPoolSize uint32, ls logging.LoggingSystem) (Mempool, error) {
 		return nil, ErrMempoolSize
 	}
 	return &mempool{
-		mu:             &sync.Mutex{},
-		maxMemPoolSize: maxPoolSize,
-		logger:         ls,
-		txMap:          make(map[string]*Tx, maxPoolSize),
-		txHeap:         make(TxHeap, 0, maxPoolSize),
-		txChan:         make(chan *Tx, 500000), // Consider if this buffer size is optimal
-		// Initialize new fields
+		mu:              &sync.Mutex{},
+		maxMemPoolSize:  maxPoolSize,
+		logger:          ls,
+		txMap:           make(map[string]*Tx, maxPoolSize),
+		txHeap:          make(TxHeap, 0, maxPoolSize),
+		txChan:          make(chan *Tx, 200000), // Buffered channel to hold transactions before processing
 		muPendingChecks: &sync.Mutex{},
 		pendingChecks:   make(map[string]struct{}),
 	}, nil
@@ -95,8 +94,8 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) {
 }
 
 // StartProcessors starts a specified number of goroutines to process transactions from the mempool.
-func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors int) {
-	for i := 0; i < numProcessors; i++ {
+func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors uint8) {
+	for i := uint8(0); i < numProcessors; i++ {
 		go mp.processTx(wg, mp.txChan)
 	}
 }

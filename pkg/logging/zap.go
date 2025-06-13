@@ -1,9 +1,10 @@
 package logging
 
 import (
+	"mempool/pkg/util"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"mempool/pkg/util"
 )
 
 var logger LoggingSystem = nil
@@ -25,13 +26,14 @@ type LoggingSystem interface {
 	Core() zapcore.Core
 }
 
-func Logger() LoggingSystem {
+func Logger() (LoggingSystem, error) {
+	var err error
 	if logger == nil {
 		if util.DevelopmentEnvironment() {
-			logger, _ = zap.NewDevelopment(zap.AddStacktrace(zapcore.ErrorLevel))
+			logger, err = zap.NewDevelopment(zap.AddStacktrace(zapcore.ErrorLevel))
 		} else {
-			logger, _ = zap.NewProduction(zap.AddStacktrace(zapcore.ErrorLevel))
+			logger, err = zap.NewProduction()
 		}
 	}
-	return logger.Named("system")
+	return logger.Named("mempool"), err
 }

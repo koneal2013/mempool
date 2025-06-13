@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -17,20 +19,31 @@ import (
 func main() {
 	godotenv.Load(".env")
 	maxMempoolSize := os.Getenv(constants.ENV_MAX_MEMPOOL_SIZE)
-	logger := logging.Logger()
+	logger, err := logging.Logger()
+	if err != nil {
+		panic(err)
+	}
 	defer logger.Sync()
 	logger.Sugar().Infof("initializing mempool of size [%v]", maxMempoolSize)
 	if maxPoolSize, err := strconv.Atoi(maxMempoolSize); err != nil {
 		logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
 	} else {
-		logger.Sugar().Info("retrieving transactions and inserting into mempool")
+		numOfCores := uint8(runtime.NumCPU())
 		mempool, err := types.NewMempool(uint32(maxPoolSize), logger)
 		if err != nil {
 			logger.Sugar().Fatalf("error initializing mempool: [%v]", err)
 		}
 		waitGroup := &sync.WaitGroup{}
-		mempool.StartProcessors(waitGroup, 10) // Start 10 processors explicitly
+		mempool.StartProcessors(waitGroup, numOfCores) // Start processors equal to the number of CPU cores for CPU-bound tasks
+		logger.Sugar().Infof("[%v] workers started", numOfCores)
+		// start timer to test performance
+		start := time.Now()
+		defer func() {
+			elapsed := time.Since(start)
+			logger.Sugar().Infof("Total time taken to process transactions: %s", elapsed)
+		}()
 		// Process transactions.txt and insert into mempool
+		logger.Sugar().Info("retrieving transactions and inserting into mempool")
 		if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil {
 			logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
 		} else {

@@ -98,7 +98,8 @@ func TestMempool_AddTx(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			logger := logging.Logger()
+			logger, err := logging.Logger()
+			require.NoError(t, err, "Failed to initialize logger for test")
 			memPool, err := types.NewMempool(tc.maxPoolSize, logger)
 			require.NoError(t, err)
 
@@ -228,7 +229,8 @@ func TestMempool_ExportToFile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			logger := logging.Logger()
+			logger, err := logging.Logger()
+			require.NoError(t, err, "Failed to initialize logger for test")
 			memPool, err := types.NewMempool(tc.maxPoolSize, logger)
 			require.NoError(t, err)
 			tx := types.NewTx(logger, tc.txHash, tc.signature, tc.gas, tc.feePerGas)
@@ -248,7 +250,8 @@ func TestMempool_ExportToFile(t *testing.T) {
 }
 
 func BenchmarkMempool_AddTx(b *testing.B) {
-	logger := logging.Logger()
+	logger, err := logging.Logger()
+	require.NoError(b, err, "Failed to initialize logger for benchmark")
 	sizes := []int{100, 1000, 10000, 100000} // Different numbers of transactions to add
 
 	for _, numTxs := range sizes {
@@ -278,7 +281,8 @@ func BenchmarkMempool_AddTx(b *testing.B) {
 }
 
 func BenchmarkMempool_ExportToFile(b *testing.B) {
-	logger := logging.Logger()
+	logger, err := logging.Logger()
+	require.NoError(b, err, "Failed to initialize logger for benchmark")
 	sizes := []int{100, 1000, 10000, 50000} // Different mempool sizes to export
 
 	for _, size := range sizes {
