@@ -51,23 +51,23 @@ func main() {
 			defer transactionFile.Close()
 			scanner := bufio.NewScanner(transactionFile)
 			scanner.Split(bufio.ScanLines)
-			var currentLine int
+			var currentLine uint32
 			for scanner.Scan() {
 				currentLine++
 				rawTransaction := strings.Fields(scanner.Text())
 				if len(rawTransaction) != 4 {
-					logger.Error("transaction file is misformatted", zap.String("path", constants.ENV_TRANSACTIONS_FILE_PATH), zap.Int("line", currentLine))
+					logger.Error("transaction file is misformatted", zap.String("path", constants.ENV_TRANSACTIONS_FILE_PATH), zap.Uint32("line", currentLine))
 					continue
 				}
 				txHash := strings.TrimPrefix(rawTransaction[0], "TxHash=")
 				gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[1], "Gas="), 64)
 				if err != nil {
-					logger.Error("gas conversion error", zap.String("txHash", txHash), zap.Int("line", currentLine))
+					logger.Error("gas conversion error", zap.String("txHash", txHash), zap.Uint32("line", currentLine))
 					continue
 				}
 				feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[2], "FeePerGas="), 64)
 				if err != nil {
-					logger.Error("feePerGas conversion error", zap.String("txHash", txHash), zap.Int("line", currentLine))
+					logger.Error("feePerGas conversion error", zap.String("txHash", txHash), zap.Uint32("line", currentLine))
 					continue
 				}
 				signature := strings.TrimPrefix(rawTransaction[3], "Signature=")
