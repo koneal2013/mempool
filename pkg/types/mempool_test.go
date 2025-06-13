@@ -274,7 +274,6 @@ func BenchmarkMempool_AddTx(b *testing.B) {
 				wg.Wait() // Wait for all processing goroutines to finish their current tasks
 
 				b.StopTimer() // Stop timer after operation
-				// Clean up or reset mempool if necessary, though NewMempool handles re-initialization
 			}
 		})
 	}

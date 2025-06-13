@@ -57,19 +57,21 @@
 				
 				<option value="file0">mempool/cmd/mempool/main.go (0.0%)</option>
 				
-				<option value="file1">mempool/mocks/pkg_logging_zap.go (16.7%)</option>
+				<option value="file1">mempool/mocks/pkg_logging_zap.go (0.0%)</option>
 				
 				<option value="file2">mempool/mocks/pkg_types_mempool.go (0.0%)</option>
 				
 				<option value="file3">mempool/mocks/pkg_types_tx.go (0.0%)</option>
 				
-				<option value="file4">mempool/pkg/logging/zap.go (80.0%)</option>
+				<option value="file4">mempool/pkg/logging/zap.go (0.0%)</option>
 				
-				<option value="file5">mempool/pkg/types/mempool.go (70.8%)</option>
+				<option value="file5">mempool/pkg/types/max_heap.go (100.0%)</option>
 				
-				<option value="file6">mempool/pkg/types/tx.go (100.0%)</option>
+				<option value="file6">mempool/pkg/types/mempool.go (81.3%)</option>
 				
-				<option value="file7">mempool/pkg/util/environment.go (100.0%)</option>
+				<option value="file7">mempool/pkg/types/tx.go (100.0%)</option>
+				
+				<option value="file8">mempool/pkg/util/environment.go (0.0%)</option>
 				
 				</select>
 			</div>
@@ -87,81 +89,89 @@
 
 import (
         "bufio"
-        "fmt"
         "os"
+        "runtime"
         "strconv"
         "strings"
         "sync"
         "time"
 
         "github.com/joho/godotenv"
+        "go.uber.org/zap"
 
         "mempool/pkg/constants"
         "mempool/pkg/logging"
         "mempool/pkg/types"
-        "mempool/pkg/util"
 )
 
 func main() <span class="cov0" title="0">{
         godotenv.Load(".env")
         maxMempoolSize := os.Getenv(constants.ENV_MAX_MEMPOOL_SIZE)
-        logger := logging.Logger()
-        defer logger.Sync()
-        fmt.Println(len("hello")) // TODO: Remove this debug line
-        logger.Sugar().Infof("initializing mempool of size [%v]", maxMempoolSize)
+        logger, err := logging.Logger()
+        if err != nil </span><span class="cov0" title="0">{
+                panic(err)</span>
+        }
+        <span class="cov0" title="0">defer logger.Sync()
+        logger.Info("initializing mempool", zap.String("maxMempoolSize", maxMempoolSize))
         if maxPoolSize, err := strconv.Atoi(maxMempoolSize); err != nil </span><span class="cov0" title="0">{
-                logger.Sugar().Fatalf("[%s] envoirnment variable not set", constants.ENV_MAX_MEMPOOL_SIZE)
+                logger.Fatal("environment variable not set", zap.String("variable", constants.ENV_MAX_MEMPOOL_SIZE))
         }</span> else<span class="cov0" title="0"> {
-                logger.Sugar().Info("retrieving transactions and inserting into mempool")
-                mempool := types.NewMempool(maxPoolSize, logger) // Type will be inferred, no change needed here if methods are on interface
+                numOfCores := uint8(runtime.NumCPU())
+                mempool, err := types.NewMempool(uint32(maxPoolSize), logger)
+                if err != nil </span><span class="cov0" title="0">{
+                        logger.Fatal("error initializing mempool", zap.Error(err))
+                }</span>
+                <span class="cov0" title="0">waitGroup := &amp;sync.WaitGroup{}
+                mempool.StartProcessors(waitGroup, numOfCores) // Start processors equal to the number of CPU cores for CPU-bound tasks
+                logger.Info("workers started", zap.Uint8("count", numOfCores))
+                // start timer to test performance
+                start := time.Now()
+                defer func() </span><span class="cov0" title="0">{
+                        elapsed := time.Since(start)
+                        logger.Info("Total time taken to process transactions", zap.Duration("duration", elapsed))
+                }</span>()
                 // Process transactions.txt and insert into mempool
+                <span class="cov0" title="0">logger.Info("retrieving transactions and inserting into mempool")
                 if transactionFile, err := os.Open(os.Getenv(constants.ENV_TRANSACTIONS_FILE_PATH)); err != nil </span><span class="cov0" title="0">{
-                        logger.Sugar().Errorf("error opening transactions.txt. ensure [%s] enviornment variable is set", constants.ENV_TRANSACTIONS_FILE_PATH)
+                        logger.Error("error opening transactions.txt. ensure environment variable is set", zap.String("variable", constants.ENV_TRANSACTIONS_FILE_PATH))
                 }</span> else<span class="cov0" title="0"> {
                         defer transactionFile.Close()
                         scanner := bufio.NewScanner(transactionFile)
                         scanner.Split(bufio.ScanLines)
                         var currentLine int
-                        waitGroup := &amp;sync.WaitGroup{}
                         for scanner.Scan() </span><span class="cov0" title="0">{
                                 currentLine++
                                 rawTransaction := strings.Fields(scanner.Text())
-                                go func(curLine int, rawTx []string, group *sync.WaitGroup) </span><span class="cov0" title="0">{
-                                        group.Add(1)
-                                        defer group.Done()
-                                        if len(rawTx) != 4 </span><span class="cov0" title="0">{
-                                                logger.Sugar().Errorf("transaction file at path [%s] is misformatted at line [%v]", constants.ENV_TRANSACTIONS_FILE_PATH, currentLine)
-                                                return
-                                        }</span>
-                                        <span class="cov0" title="0">txHash := strings.TrimPrefix(rawTx[0], "TxHash=")
-                                        if gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[1], "Gas="), 64); err != nil </span><span class="cov0" title="0">{
-                                                logger.Sugar().Errorf("gas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
-                                                return
-                                        }</span> else<span class="cov0" title="0"> if feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTx[2], "FeePerGas="), 64); err != nil </span><span class="cov0" title="0">{
-                                                logger.Sugar().Errorf("feePerGas conversion error for transaction with hash [%s] on line [%v]", txHash, curLine)
-                                                return
-                                        }</span> else<span class="cov0" title="0"> {
-                                                signature := strings.TrimPrefix(rawTx[3], "Signature=")
-                                                if err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas), group); err != nil </span><span class="cov0" title="0">{
-                                                        logger.Sugar().Errorf("error inserting transaction with hash [%s]: [%v]", txHash, err.Error())
-                                                        return
-                                                }</span>
-                                        }
-                                }(currentLine, rawTransaction, waitGroup)
+                                if len(rawTransaction) != 4 </span><span class="cov0" title="0">{
+                                        logger.Error("transaction file is misformatted", zap.String("path", constants.ENV_TRANSACTIONS_FILE_PATH), zap.Int("line", currentLine))
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">txHash := strings.TrimPrefix(rawTransaction[0], "TxHash=")
+                                gas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[1], "Gas="), 64)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        logger.Error("gas conversion error", zap.String("txHash", txHash), zap.Int("line", currentLine))
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">feePerGas, err := strconv.ParseFloat(strings.TrimPrefix(rawTransaction[2], "FeePerGas="), 64)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        logger.Error("feePerGas conversion error", zap.String("txHash", txHash), zap.Int("line", currentLine))
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">signature := strings.TrimPrefix(rawTransaction[3], "Signature=")
+                                err = mempool.AddTx(types.NewTx(logger, txHash, signature, gas, feePerGas), waitGroup)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        logger.Error("error inserting transaction", zap.String("txHash", txHash), zap.Error(err))
+                                        continue</span>
+                                }
                         }
-                        <span class="cov0" title="0">if !util.DevelopmentEnvironment() </span><span class="cov0" title="0">{
-                                time.Sleep(time.Second)
-                        }</span> else<span class="cov0" title="0"> {
-                                time.Sleep(time.Minute * 2)
-                        }</span>
-                        <span class="cov0" title="0">mempool.CloseTxInsertChan()
-                        waitGroup.Wait()
+                        <span class="cov0" title="0">waitGroup.Wait()
+                        mempool.CloseTxInsertChan()
                         if err = mempool.ExportToFile(); err != nil </span><span class="cov0" title="0">{
-                                logger.Sugar().Error("error creating prioritized-transactions.txt", err)
+                                logger.Error("error creating prioritized-transactions.txt", zap.Error(err))
                         }</span>
                 }
         }
-        <span class="cov0" title="0">logger.Sugar().Named("main").Info("Done...")</span>
+        <span class="cov0" title="0">logger.Named("main").Info("Done...")</span>
 }
 </pre>
 		
@@ -191,14 +201,14 @@ type MockLoggingSystemMockRecorder struct {
 }
 
 // NewMockLoggingSystem creates a new mock instance.
-func NewMockLoggingSystem(ctrl *gomock.Controller) *MockLoggingSystem <span class="cov8" title="1">{
+func NewMockLoggingSystem(ctrl *gomock.Controller) *MockLoggingSystem <span class="cov0" title="0">{
         mock := &amp;MockLoggingSystem{ctrl: ctrl}
         mock.recorder = &amp;MockLoggingSystemMockRecorder{mock}
         return mock
 }</span>
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLoggingSystem) EXPECT() *MockLoggingSystemMockRecorder <span class="cov8" title="1">{
+func (m *MockLoggingSystem) EXPECT() *MockLoggingSystemMockRecorder <span class="cov0" title="0">{
         return m.recorder
 }</span>
 
@@ -282,17 +292,17 @@ func (mr *MockLoggingSystemMockRecorder) Error(arg0 interface{}, arg1 ...interfa
 }</span>
 
 // Fatal mocks base method.
-func (m *MockLoggingSystem) Fatal(arg0 string, arg1 ...zap.Field) <span class="cov8" title="1">{
+func (m *MockLoggingSystem) Fatal(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
         m.ctrl.T.Helper()
         varargs := []interface{}{arg0}
         for _, a := range arg1 </span><span class="cov0" title="0">{
                 varargs = append(varargs, a)
         }</span>
-        <span class="cov8" title="1">m.ctrl.Call(m, "Fatal", varargs...)</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Fatal", varargs...)</span>
 }
 
 // Fatal indicates an expected call of Fatal.
-func (mr *MockLoggingSystemMockRecorder) Fatal(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov8" title="1">{
+func (mr *MockLoggingSystemMockRecorder) Fatal(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
         mr.mock.ctrl.T.Helper()
         varargs := append([]interface{}{arg0}, arg1...)
         return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fatal", reflect.TypeOf((*MockLoggingSystem)(nil).Fatal), varargs...)
@@ -375,17 +385,17 @@ func (mr *MockLoggingSystemMockRecorder) Sync() *gomock.Call <span class="cov0" 
 }</span>
 
 // Warn mocks base method.
-func (m *MockLoggingSystem) Warn(arg0 string, arg1 ...zap.Field) <span class="cov8" title="1">{
+func (m *MockLoggingSystem) Warn(arg0 string, arg1 ...zap.Field) <span class="cov0" title="0">{
         m.ctrl.T.Helper()
         varargs := []interface{}{arg0}
         for _, a := range arg1 </span><span class="cov0" title="0">{
                 varargs = append(varargs, a)
         }</span>
-        <span class="cov8" title="1">m.ctrl.Call(m, "Warn", varargs...)</span>
+        <span class="cov0" title="0">m.ctrl.Call(m, "Warn", varargs...)</span>
 }
 
 // Warn indicates an expected call of Warn.
-func (mr *MockLoggingSystemMockRecorder) Warn(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov8" title="1">{
+func (mr *MockLoggingSystemMockRecorder) Warn(arg0 interface{}, arg1 ...interface{}) *gomock.Call <span class="cov0" title="0">{
         mr.mock.ctrl.T.Helper()
         varargs := append([]interface{}{arg0}, arg1...)
         return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Warn", reflect.TypeOf((*MockLoggingSystem)(nil).Warn), varargs...)
@@ -600,9 +610,10 @@ func (mr *MockTxIMockRecorder) calculateTotalFees() *gomock.Call <span class="co
 		<pre class="file" id="file4" style="display: none">package logging
 
 import (
+        "mempool/pkg/util"
+
         "go.uber.org/zap"
         "go.uber.org/zap/zapcore"
-        "mempool/pkg/util"
 )
 
 var logger LoggingSystem = nil
@@ -624,41 +635,26 @@ type LoggingSystem interface {
         Core() zapcore.Core
 }
 
-func Logger() LoggingSystem <span class="cov8" title="1">{
-        if logger == nil </span><span class="cov8" title="1">{
+func Logger() (LoggingSystem, error) <span class="cov0" title="0">{
+        var err error
+        if logger == nil </span><span class="cov0" title="0">{
                 if util.DevelopmentEnvironment() </span><span class="cov0" title="0">{
-                        logger, _ = zap.NewDevelopment(zap.AddStacktrace(zapcore.ErrorLevel))
-                }</span> else<span class="cov8" title="1"> {
-                        logger, _ = zap.NewProduction(zap.AddStacktrace(zapcore.ErrorLevel))
+                        logger, err = zap.NewDevelopment(zap.AddStacktrace(zapcore.ErrorLevel))
+                }</span> else<span class="cov0" title="0"> {
+                        logger, err = zap.NewProduction()
                 }</span>
         }
-        <span class="cov8" title="1">return logger.Named("system")</span>
+        <span class="cov0" title="0">return logger.Named("mempool"), err</span>
 }
 </pre>
 		
 		<pre class="file" id="file5" style="display: none">package types
 
-import (
-        "container/heap"
-        "fmt"
-        "os"
-        "sort"
-        "sync"
-
-        "github.com/pkg/errors"
-
-        "mempool/pkg/logging"
-)
-
-const (
-        ERR_MEMPOOL_SIZE = "mempool size cannot be less than or equal to 0"
-)
-
-// TxHeap implements heap.Interface for *Tx based on TotalFee (min-heap)
+// TxHeap implements heap.Interface for *Tx based on TotalFee (max-heap)
 type TxHeap []*Tx
 
 func (h TxHeap) Len() int           <span class="cov8" title="1">{ return len(h) }</span>
-func (h TxHeap) Less(i, j int) bool <span class="cov8" title="1">{ return h[i].TotalFee &lt; h[j].TotalFee }</span> // min-heap
+func (h TxHeap) Less(i, j int) bool <span class="cov8" title="1">{ return h[i].TotalFee &gt; h[j].TotalFee }</span> // max-heap
 func (h TxHeap) Swap(i, j int)      <span class="cov8" title="1">{ h[i], h[j] = h[j], h[i] }</span>
 
 func (h *TxHeap) Push(x interface{}) <span class="cov8" title="1">{
@@ -672,14 +668,34 @@ func (h *TxHeap) Pop() interface{} <span class="cov8" title="1">{
         *h = old[0 : n-1]
         return x
 }</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package types
+
+import (
+        "container/heap"
+        "fmt"
+        "os"
+        "strings"
+        "sync"
+
+        "github.com/pkg/errors"
+        "go.uber.org/zap"
+
+        "mempool/pkg/constants"
+        "mempool/pkg/logging"
+)
+
+var (
+        ErrMempoolSize = errors.New("mempool size cannot be less than or equal to 0")
+)
 
 type mempool struct {
-        once           *sync.Once
         mu             *sync.Mutex    // Protects txMap and txHeap
         txMap          map[string]*Tx // O(1) lookup by hash
-        txHeap         TxHeap         // Min-heap for priority management
+        txHeap         TxHeap         // Min-heap for priority management O(log n) for insertion and removal
         txChan         chan *Tx
-        maxMemPoolSize int
+        maxMemPoolSize uint32 // Maximum size of the mempool (max value of uint32 is 4,294,967,295)
         logger         logging.LoggingSystem
 
         // New fields for handling in-flight/pending transactions
@@ -688,47 +704,46 @@ type mempool struct {
 }
 
 type Mempool interface {
-        AddTx(tx *Tx, group *sync.WaitGroup) (err error) // Adds a transaction to the mempool, processing it in a goroutine.
-        GetTx(txHash string) (*Tx, bool)                 // Retrieves a transaction by its hash from the mempool.
-        MempoolLen() int                                 // Returns the current number of transactions in the mempool.
-        CloseTxInsertChan()                              // Closes the transaction insertion channel.
-        ExportToFile() error                             // Exports the mempool contents to a file.
-        MaxMemPoolSize() int                             // Returns the maximum size of the mempool.
+        AddTx(tx *Tx, group *sync.WaitGroup) (err error)         // Adds a transaction to the mempool, processing it in a goroutine.
+        GetTx(txHash string) (*Tx, bool)                         // Retrieves a transaction by its hash from the mempool.
+        MempoolLen() int                                         // Returns the current number of transactions in the mempool.
+        CloseTxInsertChan()                                      // Closes the transaction insertion channel.
+        ExportToFile() error                                     // Exports the mempool contents to a file.
+        MaxMemPoolSize() uint32                                  // Returns the maximum size of the mempool.
+        StartProcessors(wg *sync.WaitGroup, numProcessors uint8) // Starts a specified number of goroutines to process transactions from the mempool.
 }
 
 var _ Mempool = (*mempool)(nil)
 
-func NewMempool(maxPoolSize int, ls logging.LoggingSystem) Mempool <span class="cov8" title="1">{
+func NewMempool(maxPoolSize uint32, ls logging.LoggingSystem) (Mempool, error) <span class="cov8" title="1">{
         if maxPoolSize &lt;= 0 </span><span class="cov8" title="1">{
-                ls.Fatal(ERR_MEMPOOL_SIZE)
+                return nil, ErrMempoolSize
         }</span>
         <span class="cov8" title="1">return &amp;mempool{
-                mu:             &amp;sync.Mutex{},
-                once:           &amp;sync.Once{},
-                maxMemPoolSize: maxPoolSize,
-                logger:         ls,
-                txMap:          make(map[string]*Tx, maxPoolSize),
-                txHeap:         make(TxHeap, 0, maxPoolSize),
-                txChan:         make(chan *Tx, 500000), // Consider if this buffer size is optimal
-                // Initialize new fields
+                mu:              &amp;sync.Mutex{},
+                maxMemPoolSize:  maxPoolSize,
+                logger:          ls,
+                txMap:           make(map[string]*Tx, maxPoolSize),
+                txHeap:          make(TxHeap, 0, maxPoolSize),
+                txChan:          make(chan *Tx, 200000), // Buffered channel to hold transactions before processing
                 muPendingChecks: &amp;sync.Mutex{},
                 pendingChecks:   make(map[string]struct{}),
-        }</span>
+        }, nil</span>
 }
 
-func (mp *mempool) MaxMemPoolSize() int <span class="cov8" title="1">{
+func (mp *mempool) MaxMemPoolSize() uint32 <span class="cov8" title="1">{
         return mp.maxMemPoolSize
 }</span>
 
 func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) <span class="cov8" title="1">{
-        mp.logger.Sugar().Named("mempool/AddTx").Debugf("calculating total fee for transaction with hash [%s]", tx.TxHash)
+        mp.logger.Named("mempool/AddTx").Debug("calculating total fee for transaction", zap.String("txHash", tx.TxHash))
         tx.calculateTotalFees()
 
         // Check 1: Is it already fully processed and in the main Transactions map?
         mp.mu.Lock()
         if _, exists := mp.txMap[tx.TxHash]; exists </span><span class="cov0" title="0">{
                 mp.mu.Unlock()
-                mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (already in main pool) with hash [%s]", tx.TxHash)
+                mp.logger.Named("mempool/AddTx").Warn("rejected duplicate transaction (already in main pool)", zap.String("txHash", tx.TxHash))
                 return errors.Errorf("Transaction with hash [%s] already exists in mempool", tx.TxHash)
         }</span>
         <span class="cov8" title="1">mp.mu.Unlock()
@@ -737,42 +752,32 @@ func (mp *mempool) AddTx(tx *Tx, group *sync.WaitGroup) (err error) <span class=
         mp.muPendingChecks.Lock()
         if _, pending := mp.pendingChecks[tx.TxHash]; pending </span><span class="cov8" title="1">{
                 mp.muPendingChecks.Unlock()
-                mp.logger.Sugar().Named("mempool/AddTx").Warnf("rejected duplicate transaction (pending processing) with hash [%s]", tx.TxHash)
+                mp.logger.Named("mempool/AddTx").Warn("rejected duplicate transaction (pending processing)", zap.String("txHash", tx.TxHash))
                 return errors.Errorf("Transaction with hash [%s] is already pending processing", tx.TxHash)
         }</span>
         // If not pending, mark it as pending before sending to channel
         <span class="cov8" title="1">mp.pendingChecks[tx.TxHash] = struct{}{}
         mp.muPendingChecks.Unlock()
 
-        mp.once.Do(func() </span><span class="cov8" title="1">{
-                // Simplified processor startup: ensure a fixed number of processors are started.
-                // The WaitGroup 'group' from the test will track individual transaction processing.
-                for i := 0; i &lt; 10; i++ </span><span class="cov8" title="1">{ // Number of processors
-                        go mp.processTx(group, mp.txChan)
-                }</span>
-        })
-
-        // Increment WaitGroup counter before sending to channel
-        <span class="cov8" title="1">group.Add(1)
-
-        // Try to send to channel. If it blocks indefinitely (e.g., chan full and no processors),
-        // this could be an issue. For now, assume channel has buffer or processors are active.
+        // Only increment WaitGroup if the transaction will actually be sent to the channel
+        group.Add(1)
         mp.txChan &lt;- tx
-        mp.logger.Sugar().Named("mempool/AddTx").Debugf("Transaction with hash [%s] accepted and sent to processing channel", tx.TxHash)
+        mp.logger.Named("mempool/AddTx").Debug("Transaction with hash accepted and sent to processing channel", zap.String("txHash", tx.TxHash))
         return nil</span> // Successfully queued
 }
 
+// StartProcessors starts a specified number of goroutines to process transactions from the mempool.
+func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors uint8) <span class="cov8" title="1">{
+        for i := uint8(0); i &lt; numProcessors; i++ </span><span class="cov8" title="1">{
+                go mp.processTx(wg, mp.txChan)
+        }</span>
+}
+
+// processTx processes transactions from the txReadOnly channel.
 func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly &lt;-chan *Tx) <span class="cov8" title="1">{
-        // This WaitGroup 'wg' is for the test to wait for all its submitted transactions
-        // to complete processing. Each transaction processed will call Done().
-        // Note: wg.Add(1) should be called by the sender or handled carefully here.
-        // The original design had wg.Add(1) here.
-
         for transaction := range txReadOnly </span><span class="cov8" title="1">{ // Loop until channel is closed
-                // wg.Add(1) // REMOVED: wg.Add(1) should be called by the sender (AddTx)
-
                 currentTxHash := transaction.TxHash
-                mp.logger.Sugar().Named("mempool/processTx").Debugf("Processing transaction with hash [%s]", currentTxHash)
+                mp.logger.Named("mempool/processTx").Debug("Processing transaction", zap.String("txHash", currentTxHash))
 
                 // Remove from pendingChecks now that we've picked it up for processing.
                 mp.muPendingChecks.Lock()
@@ -783,14 +788,14 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly &lt;-chan *Tx) <span
 
                 // Final check for duplicates right before insertion attempt.
                 if _, exists := mp.txMap[currentTxHash]; exists </span><span class="cov0" title="0">{
-                        mp.logger.Sugar().Named("mempool/processTx").Warnf("Transaction with hash [%s] already exists in main pool (caught by final processor check). Discarding.", currentTxHash)
+                        mp.logger.Named("mempool/processTx").Warn("Transaction already exists in main pool (caught by final processor check). Discarding.", zap.String("txHash", currentTxHash))
                         mp.mu.Unlock()
                         wg.Done() // Signal completion for this transaction
                         continue</span>
                 }
 
                 // Logic for when mempool is full: prioritize transactions with higher fee
-                <span class="cov8" title="1">if len(mp.txHeap) &gt;= mp.maxMemPoolSize </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if uint32(len(mp.txHeap)) &gt;= mp.maxMemPoolSize </span><span class="cov8" title="1">{
                         // Pool full: check if new tx has higher priority than min
                         minTx := mp.txHeap[0]
                         if minTx.TotalFee &lt; transaction.TotalFee </span><span class="cov8" title="1">{
@@ -809,52 +814,36 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly &lt;-chan *Tx) <span
                 mp.mu.Unlock()
                 wg.Done()</span> // Signal completion for this transaction
         }
-        <span class="cov8" title="1">mp.logger.Sugar().Named("mempool/processTx").Info("Channel closed, processor shutting down.")</span>
+        <span class="cov8" title="1">mp.logger.Named("mempool/processTx").Info("Channel closed, processor shutting down.")</span>
 }
 
-// dropTx must be called with mp.mu held by the caller.
-func (mp *mempool) dropTx(txHash string) (err error) <span class="cov0" title="0">{
-        mp.mu.Lock()
-        defer mp.mu.Unlock()
-        _, exists := mp.txMap[txHash]
-        if !exists </span><span class="cov0" title="0">{
-                return errors.Errorf("Transaction with hash [%s] doesn't exist in mempool to drop", txHash)
+// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee descending.
+func (mp *mempool) ExportToFile() error <span class="cov8" title="1">{
+        var sb strings.Builder
+        mp.logger.Info("Exporting transactions", zap.Int("count", len(mp.txHeap)))
+        for mp.txHeap.Len() &gt; 0 </span><span class="cov0" title="0">{
+                tx := heap.Pop(&amp;mp.txHeap).(*Tx)
+                fmt.Fprintf(&amp;sb, "TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)
         }</span>
-        // Remove from heap
-        <span class="cov0" title="0">for i, t := range mp.txHeap </span><span class="cov0" title="0">{
-                if t.TxHash == txHash </span><span class="cov0" title="0">{
-                        heap.Remove(&amp;mp.txHeap, i)
-                        break</span>
-                }
-        }
-        <span class="cov0" title="0">delete(mp.txMap, txHash)
+
+        <span class="cov8" title="1">fileName := os.Getenv(constants.PRIORITIZED_TX_FILE_PATH)
+        if fileName == "" </span><span class="cov8" title="1">{
+                fileName = "./prioritized-transactions.txt"
+        }</span>
+        <span class="cov8" title="1">file, err := os.Create(fileName)
+        if err != nil </span><span class="cov0" title="0">{
+                return errors.Wrapf(err, "failed to create file %s", fileName)
+        }</span>
+        <span class="cov8" title="1">defer file.Close()
+        bytes, err := file.WriteString(sb.String())
+        if err != nil </span><span class="cov0" title="0">{
+                return errors.Wrapf(err, "failed to write to file %s", fileName)
+        }</span>
+        <span class="cov8" title="1">mp.logger.Info("Exported bytes to file", zap.Int("bytes", bytes), zap.String("fileName", fileName))
         return nil</span>
 }
 
-func (mp *mempool) ExportToFile() (err error) <span class="cov8" title="1">{
-        mp.mu.Lock()
-        txs := make([]*Tx, 0, len(mp.txHeap))
-        for _, tx := range mp.txHeap </span><span class="cov0" title="0">{
-                txs = append(txs, tx)
-        }</span>
-        <span class="cov8" title="1">mp.mu.Unlock()
-        // Sort by TotalFee descending for export
-        sort.Slice(txs, func(i, j int) bool </span><span class="cov0" title="0">{ return txs[i].TotalFee &gt; txs[j].TotalFee }</span>)
-        <span class="cov8" title="1">file, err := os.Create("prioritized-transactions.txt")
-        if err != nil </span><span class="cov0" title="0">{
-                mp.logger.Sugar().Named("mempool/ExportToFile").Error("unable to create file [prioritized-transactions.txt]")
-                return err
-        }</span>
-        <span class="cov8" title="1">defer file.Close()
-        for _, tx := range txs </span><span class="cov0" title="0">{
-                if _, err = file.WriteString(fmt.Sprintf("TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)); err != nil </span><span class="cov0" title="0">{
-                        mp.logger.Sugar().Named("mempool/ExportToFile").Errorf("unable to write [TxHash=%v Gas=%v FeePerGas=%v Signature=%v] to prioritized-transactions.txt", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature)
-                        continue</span>
-                }
-        }
-        <span class="cov8" title="1">return nil</span>
-}
-
+// CloseTxInsertChan closes the transaction insertion channel.
 func (mp *mempool) CloseTxInsertChan() <span class="cov8" title="1">{
         close(mp.txChan)
 }</span>
@@ -875,7 +864,7 @@ func (mp *mempool) MempoolLen() int <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package types
+		<pre class="file" id="file7" style="display: none">package types
 
 import (
         "mempool/pkg/logging"
@@ -914,14 +903,14 @@ func (tx *Tx) calculateTotalFees() <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">package util
+		<pre class="file" id="file8" style="display: none">package util
 
 import (
         "mempool/pkg/constants"
         "os"
 )
 
-func DevelopmentEnvironment() bool <span class="cov8" title="1">{
+func DevelopmentEnvironment() bool <span class="cov0" title="0">{
         return os.Getenv(constants.ENV_DEBUG_ENVIRONMENT) == "true"
 }</span>
 </pre>

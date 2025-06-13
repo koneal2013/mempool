@@ -103,11 +103,6 @@ func (mp *mempool) StartProcessors(wg *sync.WaitGroup, numProcessors uint8) {
 
 // processTx processes transactions from the txReadOnly channel.
 func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
-	// This WaitGroup 'wg' is for the test to wait for all its submitted transactions
-	// to complete processing. Each transaction processed will call Done().
-	// Note: wg.Add(1) should be called by the sender or handled carefully here.
-	// The original design had wg.Add(1) here.
-
 	for transaction := range txReadOnly { // Loop until channel is closed
 		currentTxHash := transaction.TxHash
 		mp.logger.Named("mempool/processTx").Debug("Processing transaction", zap.String("txHash", currentTxHash))
