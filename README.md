@@ -63,9 +63,11 @@ make covero
 
 ### Mempool Changes
 
-- The mempool now uses an explicit `uint32` for `MAX_MEMPOOL_SIZE`.
+- The mempool now uses a **max-heap** for transaction prioritization, ensuring the highest-fee transactions are always processed first.
+- All heap operations and tests have been updated to reflect max-heap logic.
+- The `ExportToFile` function exports transactions in descending order of fee (highest to lowest).
 - The mempool must be started with a call to `StartProcessors(wg, numProcessors)` before adding transactions.
-- Transactions are added using `AddTx`, which now manages the WaitGroup internally.
+- Transactions are added using `AddTx`, which manages the WaitGroup internally.
 - The binary is output to the `/bin` directory.
 - The `.env` file must be present and correctly configured for the application to run.
 
@@ -86,6 +88,14 @@ make covero
 - **WaitGroup Management:** Centralized `WaitGroup` incrementing inside `AddTx` to ensure it only tracks successfully queued transactions, preventing negative counters.
 - **Direct Transaction Submission:** Removed unnecessary goroutines in main transaction ingestion, relying on the mempool's own concurrency for safety and performance.
 - **Optimized ExportToFile:** The `ExportToFile` function now minimizes lock duration, pops the transactions from the `TxHeap`, and writes all output in a single system call using a buffer. This greatly improves performance and reliability for large mempools.
+
+### Heap Refactor
+
+- The transition from a min-heap to a max-heap required updating all heap logic and related tests to ensure correct prioritization and export order.
+
+### Export Order
+
+- The export logic was updated to pop from the max-heap, guaranteeing that the exported file lists transactions from highest to lowest fee.
 
 ### 3. Constraints
 

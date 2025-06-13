@@ -1,10 +1,10 @@
 package types
 
-// TxHeap implements heap.Interface for *Tx based on TotalFee (min-heap)
+// TxHeap implements heap.Interface for *Tx based on TotalFee (max-heap)
 type TxHeap []*Tx
 
 func (h TxHeap) Len() int           { return len(h) }
-func (h TxHeap) Less(i, j int) bool { return h[i].TotalFee < h[j].TotalFee } // min-heap
+func (h TxHeap) Less(i, j int) bool { return h[i].TotalFee > h[j].TotalFee } // max-heap
 func (h TxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *TxHeap) Push(x interface{}) {

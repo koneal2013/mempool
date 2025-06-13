@@ -150,10 +150,10 @@ func (mp *mempool) processTx(wg *sync.WaitGroup, txReadOnly <-chan *Tx) {
 	mp.logger.Named("mempool/processTx").Info("Channel closed, processor shutting down.")
 }
 
-// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee ascending.
+// ExportToFile exports the contents of the mempool to a file, sorted by TotalFee descending.
 func (mp *mempool) ExportToFile() error {
 	var sb strings.Builder
-	mp.logger.Info("Exporting transactions", zap.Int("count", len(mp.txMap)))
+	mp.logger.Info("Exporting transactions", zap.Int("count", len(mp.txHeap)))
 	for mp.txHeap.Len() > 0 {
 		tx := heap.Pop(&mp.txHeap).(*Tx)
 		fmt.Fprintf(&sb, "TxHash=%v Gas=%v FeePerGas=%v Signature=%v TotalFee=%v \n", tx.TxHash, tx.Gas, tx.FeePerGas, tx.Signature, tx.TotalFee)

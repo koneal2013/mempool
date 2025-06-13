@@ -17,9 +17,9 @@ func TestLenLessSwap(t *testing.T) {
 		t.Errorf("Len = %d; want %d", got, want)
 	}
 
-	// Test Less (min-heap property)
-	if !h.Less(2, 0) {
-		t.Errorf("Less(2,0) = false; want true (fee %f < %f)", h[2].TotalFee, h[0].TotalFee)
+	// Test Less (max-heap property)
+	if !h.Less(1, 0) {
+		t.Errorf("Less(1,0) = false; want true (fee %f > %f)", h[1].TotalFee, h[0].TotalFee)
 	}
 
 	// Test Swap
@@ -38,8 +38,8 @@ func TestPushPop(t *testing.T) {
 		heap.Push(h, &Tx{TotalFee: f})
 	}
 
-	// Expected pop order: 10, 20, 30
-	expected := []float64{10, 20, 30}
+	// Expected pop order: 30, 20, 10 (max-heap)
+	expected := []float64{30, 20, 10}
 	for _, want := range expected {
 		item := heap.Pop(h).(*Tx)
 		if got := item.TotalFee; got != want {
